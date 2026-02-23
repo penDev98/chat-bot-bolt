@@ -27,6 +27,7 @@ export default function ChatContainer() {
     stopSpeaking,
   } = useVoiceMode();
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageCountOnVoiceStart = useRef(0);
   const lastSpokenId = useRef('');
@@ -36,10 +37,14 @@ export default function ChatContainer() {
   useEffect(() => {
     // Wait for the DOM to paint the incoming message and suggestion buttons
     const timeoutId = setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'end'
-      });
+      if (scrollContainerRef.current && messagesEndRef.current) {
+        // Explicitly calculate offset relative to the container instead of bubbling scrollIntoView
+        const container = scrollContainerRef.current;
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
     }, 150);
 
     return () => clearTimeout(timeoutId);
@@ -188,7 +193,10 @@ export default function ChatContainer() {
       )}
 
       {/* ─── Messages ─── */}
-      <div className="flex-1 overflow-y-auto scroll-smooth">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto scroll-smooth"
+      >
         <div className="max-w-2xl mx-auto w-full py-6">
           {messages.map((message) => (
             <ChatMessage
