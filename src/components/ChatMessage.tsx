@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { CornerRightDown } from 'lucide-react';
 import type { ChatMessage as ChatMessageType } from '../types/chat';
 
 interface ChatMessageProps {
@@ -58,6 +59,18 @@ export default function ChatMessage({
     };
   }, [message.content, isUser]);
 
+  // Auto-focus logic when the message finishes typing and has no suggestions
+  useEffect(() => {
+    if (!isUser && showSuggestions && !isTyping) {
+      if (!message.suggestions || message.suggestions.length === 0) {
+        // Automatically focus the input field for free text entry
+        setTimeout(() => {
+          document.getElementById('chat-input-field')?.focus();
+        }, 50);
+      }
+    }
+  }, [isUser, showSuggestions, isTyping, message.suggestions]);
+
   if (isUser) {
     return (
       <div className="flex justify-end px-4 py-1.5 message-enter">
@@ -116,6 +129,19 @@ export default function ChatMessage({
                   {s.label}
                 </button>
               ))}
+            </div>
+          )}
+
+        {/* Inline Focus Guide for free-text input */}
+        {showSuggestions &&
+          !isTyping &&
+          (!message.suggestions || message.suggestions.length === 0) && (
+            <div
+              className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-primary/5 text-primary rounded-xl border border-primary/10 animate-bounce cursor-pointer hover:bg-primary/10 transition-colors shadow-sm"
+              onClick={() => document.getElementById('chat-input-field')?.focus()}
+            >
+              <CornerRightDown className="w-4 h-4" />
+              <span className="text-[13px] font-medium tracking-tight">Напишете вашия отговор долу</span>
             </div>
           )}
       </div>

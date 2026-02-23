@@ -11,10 +11,8 @@ function generateSuggestions(content: string): QuickReply[] {
   const needsCustomInput = [
     'как се казвате', 'вашето име', 'вашите имена', 'име и фамилия',
     'телефон', 'номер за контакт', 'номер за връзка', 'обадим',
-    'имейл', 'e-mail', 'email', 'електронна поща',
     'цена', 'каква цена', 'колко струва', 'за колко',
     'адрес', 'точен адрес', 'на кой адрес',
-    'опишете', 'разкажете', 'повече информация', 'допълнителна информация',
     'площ', 'квадратур', 'колко квадрат',
     'стаи', 'колко стаи', 'брой стаи',
   ];
@@ -23,11 +21,24 @@ function generateSuggestions(content: string): QuickReply[] {
     return [];
   }
 
-  // 1. Confirmation questions — check first (most specific)
-  if (text.includes('правилно') || text.includes('потвърд') || text.includes('коректн') || text.includes('вярно ли')) {
+  // 0. Consultation explicit catch
+  if (text.includes('с какво мога да ви помогна') || text.includes('нужда от помощ') || text.includes('повече информация за вашия имот')) {
+    return []; // Auto-focus will trigger natively when suggestions are empty
+  }
+
+  // 1. Confirming details at the end
+  if (text.includes('правилно') || text.includes('потвърд') || text.includes('коректни') || text.includes('всичко е наред') || text.includes('всичко наред ли') || text.includes('добавите/редактирате')) {
     return [
-      { label: 'Да, правилно е', value: 'Да, данните са коректни.' },
-      { label: 'Не, има грешка', value: 'Не, искам да направя корекция.' }
+      { label: 'Всичко изглежда наред', value: 'Да, всичко е наред.' },
+      { label: 'Редактиране', value: 'ACTION_FOCUS' }
+    ];
+  }
+
+  // 1.5 Final follow-up (after completion)
+  if (text.includes('още нещо') || text.includes('нужда от нещо друго') || text.includes('мога да съдействам с още нещо') || text.includes('мога ли да помогна с нещо друго')) {
+    return [
+      { label: 'Да', value: 'ACTION_FOCUS' },
+      { label: 'Начало', value: 'ACTION_RELOAD' }
     ];
   }
 
@@ -41,14 +52,68 @@ function generateSuggestions(content: string): QuickReply[] {
     ];
   }
 
+  // 2.5 Consultant Prompt (High Priority - must beat location phrases like "Лозенец" in the summary)
+  if (text.includes('да се свържете с наш консултант') || text.includes('по-точна оценка')) {
+    return [
+      { label: 'Да, желая', value: 'Да, желая да се свържа с консултант.' },
+      { label: 'Не, благодаря', value: 'Не, благодаря, това е всичко.' }
+    ];
+  }
+
   // 3. Asking about area / neighborhood
   if (text.includes('район') || text.includes('квартал') || text.includes('кой квартал') || text.includes('кой район') || text.includes('част на')) {
+    // If it's a specific city check, we add others
+    if (text.includes('софия')) {
+      return [
+        { label: 'Център', value: 'Център' },
+        { label: 'Лозенец', value: 'Лозенец' },
+        { label: 'Младост', value: 'Младост' },
+        { label: 'Люлин', value: 'Люлин' },
+        { label: 'Витоша', value: 'Витоша' },
+        { label: 'Друг', value: 'ACTION_FOCUS' }
+      ];
+    }
+
+    if (text.includes('бургас')) {
+      return [
+        { label: 'Център', value: 'Център' },
+        { label: 'Лазур', value: 'Лазур' },
+        { label: 'Изгрев', value: 'Изгрев' },
+        { label: 'Славейков', value: 'Славейков' },
+        { label: 'Меден рудник', value: 'Меден рудник' },
+        { label: 'Друг', value: 'ACTION_FOCUS' }
+      ];
+    }
+
+    if (text.includes('пловдив')) {
+      return [
+        { label: 'Център', value: 'Център' },
+        { label: 'Тракия', value: 'Тракия' },
+        { label: 'Смирненски', value: 'Смирненски' },
+        { label: 'Кючук Париж', value: 'Кючук Париж' },
+        { label: 'Кършияка', value: 'Кършияка' },
+        { label: 'Друг', value: 'ACTION_FOCUS' }
+      ];
+    }
+
+    if (text.includes('варна')) {
+      return [
+        { label: 'Център', value: 'Център' },
+        { label: 'Левски', value: 'Левски' },
+        { label: 'Младост', value: 'Младост' },
+        { label: 'Владиславово', value: 'Владиславово' },
+        { label: 'Бриз', value: 'Бриз' },
+        { label: 'Друг', value: 'ACTION_FOCUS' }
+      ];
+    }
+
     return [
       { label: 'Център', value: 'Център' },
       { label: 'Лозенец', value: 'Лозенец' },
       { label: 'Младост', value: 'Младост' },
       { label: 'Люлин', value: 'Люлин' },
-      { label: 'Витоша', value: 'Витоша' }
+      { label: 'Витоша', value: 'Витоша' },
+      { label: 'Друг', value: 'ACTION_FOCUS' }
     ];
   }
 
@@ -58,15 +123,49 @@ function generateSuggestions(content: string): QuickReply[] {
       { label: 'София', value: 'София' },
       { label: 'Пловдив', value: 'Пловдив' },
       { label: 'Варна', value: 'Варна' },
-      { label: 'Бургас', value: 'Бургас' }
+      { label: 'Бургас', value: 'Бургас' },
+      { label: 'Друг', value: 'ACTION_FOCUS' }
     ];
   }
 
-  // 5. Asking about sell vs rent — least specific, checked last
-  if (text.includes('продадете') || text.includes('продажба') || text.includes('наем') || text.includes('отдадете') || text.includes('продавате') || text.includes('отдавате')) {
+  // 5. Asking about photos
+  if (text.includes('снимки') || text.includes('снимка') || text.includes('прикач') || text.includes('фото')) {
     return [
-      { label: 'Искам да продам', value: 'Искам да продам имот' },
-      { label: 'Искам да отдам под наем', value: 'Искам да отдам имот под наем' }
+      { label: 'Прикачване', value: 'Искам да прикача снимки.' },
+      { label: 'Нямам снимки', value: 'Нямам снимки за момента.' }
+    ];
+  }
+
+  // 5.5 Asking about email
+  if (text.includes('имейл') || text.includes('e-mail') || text.includes('email') || text.includes('електронна поща')) {
+    return [
+      { label: 'Въведи имейл', value: 'ACTION_FOCUS' },
+      { label: 'Нямам имейл', value: 'Нямам имейл или не желая да предоставя.' }
+    ];
+  }
+
+  // 6. Final Summary Confirmation
+  if (text.includes('всичко ли е наред') || text.includes('всичко наред ли е') || text.includes('добавите/редактирате') || text.includes('добавите/оправите') || text.includes('събрахме дотук') || text.includes('редактирате нещо') || text.includes('оправите нещо')) {
+    return [
+      { label: 'Всичко изглежда наред', value: 'Всичко е наред, може да изпратите.' },
+      { label: 'Редактиране', value: 'ACTION_FOCUS' }
+    ];
+  }
+
+  // 7. Asking about sell vs rent vs estimation vs consultation — least specific, checked last
+  if (text.includes('продадете') || text.includes('продажба') || text.includes('наем') || text.includes('отдадете') || text.includes('продавате') || text.includes('отдавате') || text.includes('оценка') || text.includes('консултация')) {
+    return [
+      { label: 'Продажба', value: 'Искам да продам имот' },
+      { label: 'Наем', value: 'Искам да отдам имот под наем' },
+      { label: 'Оценка', value: 'Искам оценка на имот' },
+      { label: 'Консултация', value: 'Искам консултация' }
+    ];
+  }
+
+  // 8. End of conversation reload
+  if (text.includes('приятен ден') || text.includes('радвам се, че успях') || text.includes('свържете се с нас')) {
+    return [
+      { label: 'Начало', value: 'ACTION_RELOAD' }
     ];
   }
 
@@ -77,11 +176,13 @@ const INITIAL_MESSAGE: ChatMessage = {
   id: 'init-1',
   role: 'assistant',
   content:
-    'Здравейте! Аз съм вашият виртуален асистент от Столични имоти.\n\nТук съм, за да ви помогна да продадете или отдадете имота си възможно най-бързо и лесно.',
+    'Здравейте! Аз съм Алекс - вашият виртуален асистент от Столични имоти.\n\nКак мога да помогна във връзка с ваш имот?',
   timestamp: new Date(),
   suggestions: [
     { label: 'Продажба', value: 'Искам да продам имот.' },
     { label: 'Наем', value: 'Искам да отдам имот под наем.' },
+    { label: 'Оценка', value: 'Искам оценка на имот.' },
+    { label: 'Консултация', value: 'Искам консултация.' },
   ]
 };
 
@@ -129,7 +230,7 @@ export function useChatAgent() {
           role: 'assistant',
           content: response.message,
           timestamp: new Date(),
-          suggestions: generateSuggestions(response.message).slice(0, 5) // Limit to 5
+          suggestions: generateSuggestions(response.message).slice(0, 6) // Limit to 6 to include "Друг"
         };
 
         const withAssistant = [...messagesRef.current, assistantMsg];

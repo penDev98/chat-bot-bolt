@@ -2,177 +2,267 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { fetchTTSAudio } from '../lib/api';
 
 interface SpeechRecognitionEvent {
-  resultIndex: number;
-  results: SpeechRecognitionResultList;
+    resultIndex: number;
+    results: SpeechRecognitionResultList;
 }
 
 export function useVoiceMode() {
-  const [voiceActive, setVoiceActive] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [pendingTranscript, setPendingTranscript] = useState<string | null>(null);
+    const [voiceActive, setVoiceActive] = useState(false);
+    const [isListening, setIsListening] = useState(false);
+    const [isSpeaking, setIsSpeaking] = useState(false);
+    const [pendingTranscript, setPendingTranscript] = useState<string | null>(null);
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const transcriptRef = useRef('');
+    const recognitionRef = useRef<SpeechRecognition | null>(null);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const transcriptRef = useRef('');
 
-  const supported =
-    typeof window !== 'undefined' &&
-    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+    // Synchronous flag — checked immediately in onresult, no React batching delay
+    const speakingRef = useRef(false);
 
-  // Initialize speech recognition
-  useEffect(() => {
-    if (!supported) return;
+    // Debounce timer for finalizing user speech
+    const speechDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const SpeechRecognitionCtor =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognitionCtor();
-    recognition.lang = 'bg-BG';
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    const supported =
+        typeof window !== 'undefined' &&
+        ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const last = event.results[event.results.length - 1];
-      if (last.isFinal) {
-        const text = last[0].transcript.trim();
-        if (text) {
-          transcriptRef.current = text;
-          setPendingTranscript(text);
-        }
-      }
-    };
+    // Initialize speech recognition
+    useEffect(() => {
+        if (!supported) return;
 
-    recognition.onend = () => {
-      setIsListening(false);
-    };
+        const SpeechRecognitionCtor =
+            window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognitionCtor();
+        recognition.lang = 'bg-BG';
+        recognition.continuous = true;
+        recognition.interimResults = true;
 
-    recognition.onerror = () => {
-      setIsListening(false);
-    };
+        recognition.onresult = (event: SpeechRecognitionEvent) => {
+            // GUARD: if agent is speaking, ignore the result
+            if (speakingRef.current) return;
 
-    recognitionRef.current = recognition;
+            // Build up the full transcript from all results
+            let fullTranscript = '';
+            for (let i = 0; i < event.results.length; i++) {
+                fullTranscript += event.results[i][0].transcript;
+            }
+            fullTranscript = fullTranscript.trim();
 
-    return () => {
-      recognition.abort();
-    };
-  }, [supported]);
+            if (!fullTranscript) return;
 
-  // Stop any currently playing audio immediately
-  const stopSpeaking = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      audioRef.current = null;
-    }
-    setIsSpeaking(false);
-    if ('speechSynthesis' in window) {
-      speechSynthesis.cancel();
-    }
-  }, []);
+            // Store current transcript but don't submit yet
+            transcriptRef.current = fullTranscript;
 
-  // When user starts speaking (interruption), stop the agent immediately
-  useEffect(() => {
-    if (isListening && isSpeaking) {
-      stopSpeaking();
-    }
-  }, [isListening, isSpeaking, stopSpeaking]);
+            // Clear previous debounce timer
+            if (speechDebounceRef.current) {
+                clearTimeout(speechDebounceRef.current);
+            }
 
-  const toggleVoice = useCallback(() => {
-    setVoiceActive((prev) => {
-      if (prev) {
-        // Turning OFF: stop everything immediately
-        recognitionRef.current?.abort();
-        setIsListening(false);
+            // Wait 1 second of silence before finalizing
+            speechDebounceRef.current = setTimeout(() => {
+                const text = transcriptRef.current;
+                if (text) {
+                    setPendingTranscript(text);
+                    transcriptRef.current = '';
+                    // Stop recognition after submitting — it will auto-restart
+                    try { recognition.abort(); } catch { /* ignore */ }
+                }
+            }, 1000);
+        };
+
+        recognition.onend = () => {
+            setIsListening(false);
+        };
+
+        recognition.onerror = () => {
+            setIsListening(false);
+        };
+
+        recognitionRef.current = recognition;
+
+        return () => {
+            recognition.abort();
+        };
+    }, [supported]);
+
+    // Stop any currently playing audio immediately
+    const stopSpeaking = useCallback(() => {
+        speakingRef.current = false;
         if (audioRef.current) {
-          audioRef.current.pause();
-          audioRef.current.currentTime = 0;
-          audioRef.current = null;
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+            audioRef.current = null;
         }
         setIsSpeaking(false);
         if ('speechSynthesis' in window) {
-          speechSynthesis.cancel();
+            speechSynthesis.cancel();
         }
-      }
-      return !prev;
-    });
-  }, []);
+    }, []);
 
-  const consumeTranscript = useCallback(() => {
-    setPendingTranscript(null);
-    transcriptRef.current = '';
-  }, []);
-
-  const speak = useCallback(
-    async (text: string) => {
-      if (!voiceActive) return;
-
-      try {
-        setIsSpeaking(true);
-        const audioBlob = await fetchTTSAudio(text);
-
-        // Check if voice was turned off while fetching
-        if (!audioRef.current && !voiceActive) {
-          setIsSpeaking(false);
-          return;
+    // When user starts speaking (interruption), stop the agent immediately
+    useEffect(() => {
+        if (isListening && isSpeaking) {
+            stopSpeaking();
         }
+    }, [isListening, isSpeaking, stopSpeaking]);
 
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
-        audioRef.current = audio;
+    const toggleVoice = useCallback(() => {
+        setVoiceActive((prev) => {
+            if (prev) {
+                // Turning OFF: stop everything immediately
+                speakingRef.current = false;
+                recognitionRef.current?.abort();
+                setIsListening(false);
+                if (audioRef.current) {
+                    audioRef.current.pause();
+                    audioRef.current.currentTime = 0;
+                    audioRef.current = null;
+                }
+                setIsSpeaking(false);
+                if ('speechSynthesis' in window) {
+                    speechSynthesis.cancel();
+                }
+            }
+            return !prev;
+        });
+    }, []);
 
-        audio.onended = () => {
-          setIsSpeaking(false);
-          URL.revokeObjectURL(audioUrl);
-          audioRef.current = null;
-        };
+    const consumeTranscript = useCallback(() => {
+        setPendingTranscript(null);
+        transcriptRef.current = '';
+    }, []);
 
-        audio.onerror = () => {
-          setIsSpeaking(false);
-          URL.revokeObjectURL(audioUrl);
-          audioRef.current = null;
-        };
+    // Bulgarian digits map
+    const bgDigits: Record<string, string> = {
+        '0': 'нула',
+        '1': 'едно',
+        '2': 'две',
+        '3': 'три',
+        '4': 'четири',
+        '5': 'пет',
+        '6': 'шест',
+        '7': 'седем',
+        '8': 'осем',
+        '9': 'девет'
+    };
 
-        await audio.play();
-      } catch {
-        setIsSpeaking(false);
-        // Fallback to Web Speech API
-        if ('speechSynthesis' in window) {
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = 'bg-BG';
-          utterance.rate = 1.15;
-          utterance.onend = () => setIsSpeaking(false);
-          utterance.onerror = () => setIsSpeaking(false);
-          speechSynthesis.speak(utterance);
+    const formatTextForSpeech = (rawText: string): string => {
+        // Regex logic:
+        // Match numbers that are likely phone numbers or long digits
+        // Look for 5 or more consecutive digits, possibly with spaces or dashes inside
+        // Or numbers starting with '0' or '+359'
+        return rawText.replace(/(?:\+359|0)(?:[\s-]*\d){5,}/g, (match) => {
+            // Strip out everything except the literal digits
+            const digitsOnly = match.replace(/\D/g, '');
+            // Convert each digit to its Bulgarian word
+            const spelledOut = digitsOnly.split('').map(d => bgDigits[d] || d).join(', ');
+            return spelledOut;
+        });
+    };
+
+    const speak = useCallback(
+        async (rawText: string) => {
+            if (!voiceActive) return;
+
+            // Format text before speech synthesis
+            const text = formatTextForSpeech(rawText);
+
+            // Set the synchronous guard IMMEDIATELY — before anything else
+            speakingRef.current = true;
+
+            // Stop any currently playing audio
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current.currentTime = 0;
+                audioRef.current = null;
+            }
+            if ('speechSynthesis' in window) {
+                speechSynthesis.cancel();
+            }
+
+            // Stop the microphone to prevent echo
+            if (recognitionRef.current) {
+                try { recognitionRef.current.abort(); } catch { /* ignore */ }
+                setIsListening(false);
+            }
+
+            try {
+                setIsSpeaking(true);
+                const audioBlob = await fetchTTSAudio(text);
+
+                // Check if voice was turned off while fetching
+                if (!speakingRef.current) {
+                    setIsSpeaking(false);
+                    return;
+                }
+
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audio = new Audio(audioUrl);
+                audioRef.current = audio;
+
+                audio.onended = () => {
+                    speakingRef.current = false;
+                    setIsSpeaking(false);
+                    URL.revokeObjectURL(audioUrl);
+                    audioRef.current = null;
+                };
+
+                audio.onerror = () => {
+                    speakingRef.current = false;
+                    setIsSpeaking(false);
+                    URL.revokeObjectURL(audioUrl);
+                    audioRef.current = null;
+                };
+
+                await audio.play();
+            } catch {
+                speakingRef.current = false;
+                setIsSpeaking(false);
+                // Fallback to Web Speech API
+                if ('speechSynthesis' in window) {
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang = 'bg-BG';
+                    utterance.rate = 1.15;
+                    utterance.onend = () => {
+                        speakingRef.current = false;
+                        setIsSpeaking(false);
+                    };
+                    utterance.onerror = () => {
+                        speakingRef.current = false;
+                        setIsSpeaking(false);
+                    };
+                    speechSynthesis.speak(utterance);
+                }
+            }
+        },
+        [voiceActive]
+    );
+
+    // Continuous listening loop: auto-restart immediately after agent stops speaking
+    useEffect(() => {
+        if (voiceActive && !isSpeaking && !isListening && !speakingRef.current && recognitionRef.current) {
+            const timer = setTimeout(() => {
+                if (speakingRef.current) return;
+                try {
+                    recognitionRef.current?.start();
+                    setIsListening(true);
+                } catch {
+                    // ignore
+                }
+            }, 100); // minimal delay — speakingRef guard handles echo
+            return () => clearTimeout(timer);
         }
-      }
-    },
-    [voiceActive]
-  );
+    }, [voiceActive, isSpeaking, isListening]);
 
-  // Continuous listening loop: auto-restart after speaking finishes
-  useEffect(() => {
-    if (voiceActive && !isSpeaking && !isListening && recognitionRef.current) {
-      const timer = setTimeout(() => {
-        try {
-          recognitionRef.current?.start();
-          setIsListening(true);
-        } catch {
-          // ignore
-        }
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [voiceActive, isSpeaking, isListening]);
-
-  return {
-    voiceActive,
-    isListening,
-    isSpeaking,
-    pendingTranscript,
-    supported,
-    toggleVoice,
-    consumeTranscript,
-    speak,
-    stopSpeaking,
-  };
+    return {
+        voiceActive,
+        isListening,
+        isSpeaking,
+        pendingTranscript,
+        supported,
+        toggleVoice,
+        consumeTranscript,
+        speak,
+        stopSpeaking,
+    };
 }

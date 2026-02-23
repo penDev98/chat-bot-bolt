@@ -91,7 +91,7 @@ export default function ChatInput({
           className="hidden"
         />
 
-        <div className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl flex items-center focus-within:ring-2 focus-within:ring-primary/10 focus-within:border-primary/50 transition-all shadow-sm">
+        <div className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl flex items-center focus-within:ring-4 focus-within:ring-primary/40 focus-within:border-primary/50 focus-within:bg-primary/5 transition-all duration-300 shadow-sm">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
@@ -103,6 +103,7 @@ export default function ChatInput({
           </button>
 
           <input
+            id="chat-input-field"
             type="text"
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -116,8 +117,8 @@ export default function ChatInput({
             type="button"
             onClick={onVoiceToggle}
             className={`p-2.5 flex-shrink-0 rounded-xl transition-all ${voiceActive
-                ? 'text-white bg-gradient-to-br from-red-500 to-pink-600 shadow-sm voice-pulse'
-                : 'text-slate-400 hover:text-primary hover:bg-slate-100'
+              ? 'text-white bg-gradient-to-br from-red-500 to-pink-600 shadow-sm voice-pulse'
+              : 'text-slate-400 hover:text-primary hover:bg-slate-100'
               }`}
             title={voiceActive ? 'Изключи гласов режим' : 'Включи гласов режим'}
           >

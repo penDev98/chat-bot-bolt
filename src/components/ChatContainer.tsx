@@ -37,6 +37,21 @@ export default function ChatContainer() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
+  // Broadcast dimensions for iframe hosting
+  useEffect(() => {
+    // Small delay to allow DOM to finish layout paints
+    const timer = setTimeout(() => {
+      window.parent.postMessage(
+        {
+          type: 'CHAT_HEIGHT_EVENT',
+          height: document.documentElement.scrollHeight,
+        },
+        '*'
+      );
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [messages, isSpeaking, isListening]);
+
   // Speak ONLY new messages that arrive AFTER voice was toggled on
   useEffect(() => {
     if (!voiceActive) return;
@@ -73,6 +88,18 @@ export default function ChatContainer() {
 
   const handleSendMessage = useCallback(
     (text: string) => {
+      if (text === 'ACTION_FOCUS') {
+        setTimeout(() => {
+          document.getElementById('chat-input-field')?.focus();
+        }, 100);
+        return;
+      }
+
+      if (text === 'ACTION_RELOAD') {
+        window.location.reload();
+        return;
+      }
+
       sendUserMessage(text);
     },
     [sendUserMessage]
