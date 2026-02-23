@@ -15,6 +15,8 @@ function generateSuggestions(content: string): QuickReply[] {
     'адрес', 'точен адрес', 'на кой адрес',
     'площ', 'квадратур', 'колко квадрат',
     'стаи', 'колко стаи', 'брой стаи',
+    'етаж', 'на кой етаж',
+    'спални', 'колко спални'
   ];
 
   if (needsCustomInput.some((phrase) => text.includes(phrase))) {
@@ -43,12 +45,21 @@ function generateSuggestions(content: string): QuickReply[] {
   }
 
   // 2. Asking about property type
-  if (text.includes('какъв тип') || text.includes('вид имот') || text.includes('какъв имот') || text.includes('тип на имот') || text.includes('вид на имот')) {
+  if (text.includes('какъв тип') || text.includes('вид имот') || text.includes('какъв имот') || text.includes('тип на имот') || text.includes('вид на имот') || text.includes('типът') || text.includes('типа') || text.includes('стаен') || text.includes('мезонет')) {
     return [
-      { label: 'Апартамент', value: 'Апартамент' },
+      { label: '1-стаен', value: '1-стаен' },
+      { label: '2-стаен', value: '2-стаен' },
+      { label: '3-стаен', value: '3-стаен' },
       { label: 'Къща', value: 'Къща' },
-      { label: 'Парцел', value: 'Парцел' },
-      { label: 'Офис', value: 'Офис' }
+      { label: 'Друг', value: 'ACTION_FOCUS' }
+    ];
+  }
+
+  // 2.2 Asking about furnishing
+  if (text.includes('обзаведен') || text.includes('обзавеждане')) {
+    return [
+      { label: 'Обзаведен', value: 'Обзаведен' },
+      { label: 'Необзаведен', value: 'Необзаведен' }
     ];
   }
 

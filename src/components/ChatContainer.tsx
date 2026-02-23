@@ -34,7 +34,15 @@ export default function ChatContainer() {
 
   // Auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Wait for the DOM to paint the incoming message and suggestion buttons
+    const timeoutId = setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'end'
+      });
+    }, 150);
+
+    return () => clearTimeout(timeoutId);
   }, [messages, isLoading]);
 
   // Broadcast dimensions for iframe hosting
@@ -243,7 +251,7 @@ export default function ChatContainer() {
             </div>
           )}
 
-          <div ref={messagesEndRef} className="h-4" />
+          <div ref={messagesEndRef} className="h-8" />
         </div>
       </div>
 

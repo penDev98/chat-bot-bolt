@@ -31,11 +31,19 @@ export function useVoiceMode() {
         if (!supported) return;
 
         const SpeechRecognitionCtor =
-            window.SpeechRecognition || window.webkitSpeechRecognition;
-        const recognition = new SpeechRecognitionCtor();
+            (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        const recognition: any = new SpeechRecognitionCtor();
         recognition.lang = 'bg-BG';
         recognition.continuous = true;
         recognition.interimResults = true;
+
+        recognition.onstart = () => {
+            setIsListening(true);
+        };
+
+        recognition.onaudiostart = () => {
+            setIsListening(true);
+        };
 
         recognition.onresult = (event: SpeechRecognitionEvent) => {
             // GUARD: if agent is speaking, ignore the result
@@ -64,7 +72,7 @@ export function useVoiceMode() {
                 if (text) {
                     setPendingTranscript(text);
                     transcriptRef.current = '';
-                    // Stop recognition after submitting — it will auto-restart
+                    // Stop recognition after submitting — it will auto-restart via onend
                     try { recognition.abort(); } catch { /* ignore */ }
                 }
             }, 1000);
@@ -72,10 +80,26 @@ export function useVoiceMode() {
 
         recognition.onend = () => {
             setIsListening(false);
+
+            // iOS Auto-Restart sequence: natively restart within the closure
+            // Instead of relying on a detached useEffect timeout
+            if (voiceActiveRef.current && !speakingRef.current) {
+                // Short timeout to let the browser breathe before re-engaging microphone
+                setTimeout(() => {
+                    if (voiceActiveRef.current && !speakingRef.current) {
+                        try { recognition.start(); } catch { /* ignore */ }
+                    }
+                }, 100);
+            }
         };
 
-        recognition.onerror = () => {
+        recognition.onerror = (event: any) => {
             setIsListening(false);
+            if (event.error === 'not-allowed') {
+                console.warn('Microphone permission denied by iOS/browser.');
+                setVoiceActive(false);
+                voiceActiveRef.current = false;
+            }
         };
 
         recognitionRef.current = recognition;
@@ -84,6 +108,9 @@ export function useVoiceMode() {
             recognition.abort();
         };
     }, [supported]);
+
+    // Track voiceActive instantly for closures
+    const voiceActiveRef = useRef(false);
 
     // Stop any currently playing audio immediately
     const stopSpeaking = useCallback(() => {
@@ -108,7 +135,10 @@ export function useVoiceMode() {
 
     const toggleVoice = useCallback(() => {
         setVoiceActive((prev) => {
-            if (prev) {
+            const nextState = !prev;
+            voiceActiveRef.current = nextState;
+
+            if (!nextState) {
                 // Turning OFF: stop everything immediately
                 speakingRef.current = false;
                 recognitionRef.current?.abort();
@@ -122,8 +152,16 @@ export function useVoiceMode() {
                 if ('speechSynthesis' in window) {
                     speechSynthesis.cancel();
                 }
+            } else {
+                // Turning ON: Start recognized synchronously inside this exact user-click event.
+                // iOS Safari strictly requires this.
+                try {
+                    recognitionRef.current?.start();
+                } catch {
+                    // ignore if already started
+                }
             }
-            return !prev;
+            return nextState;
         });
     }, []);
 
@@ -162,7 +200,7 @@ export function useVoiceMode() {
 
     const speak = useCallback(
         async (rawText: string) => {
-            if (!voiceActive) return;
+            if (!voiceActiveRef.current) return;
 
             // Format text before speech synthesis
             const text = formatTextForSpeech(rawText);
@@ -205,6 +243,11 @@ export function useVoiceMode() {
                     setIsSpeaking(false);
                     URL.revokeObjectURL(audioUrl);
                     audioRef.current = null;
+
+                    // iOS Restart sequence: native re-engagement after speaking ends
+                    if (voiceActiveRef.current) {
+                        try { recognitionRef.current?.start(); } catch { /* ignore */ }
+                    }
                 };
 
                 audio.onerror = () => {
@@ -212,6 +255,10 @@ export function useVoiceMode() {
                     setIsSpeaking(false);
                     URL.revokeObjectURL(audioUrl);
                     audioRef.current = null;
+
+                    if (voiceActiveRef.current) {
+                        try { recognitionRef.current?.start(); } catch { /* ignore */ }
+                    }
                 };
 
                 await audio.play();
@@ -226,33 +273,25 @@ export function useVoiceMode() {
                     utterance.onend = () => {
                         speakingRef.current = false;
                         setIsSpeaking(false);
+
+                        if (voiceActiveRef.current) {
+                            try { recognitionRef.current?.start(); } catch { /* ignore */ }
+                        }
                     };
                     utterance.onerror = () => {
                         speakingRef.current = false;
                         setIsSpeaking(false);
+
+                        if (voiceActiveRef.current) {
+                            try { recognitionRef.current?.start(); } catch { /* ignore */ }
+                        }
                     };
                     speechSynthesis.speak(utterance);
                 }
             }
         },
-        [voiceActive]
+        []
     );
-
-    // Continuous listening loop: auto-restart immediately after agent stops speaking
-    useEffect(() => {
-        if (voiceActive && !isSpeaking && !isListening && !speakingRef.current && recognitionRef.current) {
-            const timer = setTimeout(() => {
-                if (speakingRef.current) return;
-                try {
-                    recognitionRef.current?.start();
-                    setIsListening(true);
-                } catch {
-                    // ignore
-                }
-            }, 100); // minimal delay — speakingRef guard handles echo
-            return () => clearTimeout(timer);
-        }
-    }, [voiceActive, isSpeaking, isListening]);
 
     return {
         voiceActive,
