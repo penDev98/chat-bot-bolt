@@ -67,7 +67,7 @@ function generateSuggestions(content: string): QuickReply[] {
   if (text.includes('да се свържете с наш консултант') || text.includes('по-точна оценка')) {
     return [
       { label: 'Да, желая', value: 'Да, желая да се свържа с консултант.' },
-      { label: 'Не, благодаря', value: 'Не, благодаря, това е всичко.' }
+      { label: 'Начало', value: 'ACTION_RELOAD' }
     ];
   }
 
