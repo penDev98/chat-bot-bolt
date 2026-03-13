@@ -23,7 +23,7 @@ export interface ChatResponse {
   message: string;
   leadSubmitted: boolean;
   leadData?: LeadData;
-  airtableSuccess?: boolean;
+  dbSuccess?: boolean;
   error?: string;
 }
 

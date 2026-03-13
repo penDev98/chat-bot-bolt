@@ -1,8 +1,8 @@
 import type { ChatResponse, LeadData } from '../types/chat';
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
-const AIRTABLE_API_KEY = import.meta.env.VITE_AIRTABLE_API_KEY;
-const AIRTABLE_POST_URL = import.meta.env.VITE_AIRTABLE_POST_URL;
+const DB_API_KEY = import.meta.env.VITE_DB_API_KEY;
+const DB_POST_URL = import.meta.env.VITE_DB_POST_URL;
 
 const SYSTEM_PROMPT = `### Role
 Ти си специалист по квалификация на запитвания за недвижими имоти. Твоята роля е да помагаш на потребителите да подават обяви за продажба или наем. Трябва да събереш прецизна информация: offerType (продажба/наем), city (град), district (район/квартал), contactName, phone, email, description (тип имот и детайли) и photoRefs (снимки).
@@ -115,37 +115,41 @@ const tools = [
   },
 ];
 
-async function submitToAirtable(leadData: LeadData) {
-  const response = await fetch(AIRTABLE_POST_URL, {
+async function submitToExternalAPI(leadData: LeadData) {
+  const fd = new FormData();
+
+  // Split contactName into firstName and lastName
+  const nameParts = (leadData.contactName || "").trim().split(/\s+/);
+  const firstName = nameParts[0] || "";
+  const lastName = nameParts.slice(1).join(" ") || "";
+
+  // Map to the required fields shown in the target system
+  fd.append('firstName', firstName || "none");
+  fd.append('lastName', lastName || "none");
+  fd.append('phone', leadData.contactPhone || "none");
+  fd.append('email', leadData.contactEmail && leadData.contactEmail !== 'not disclosed' ? leadData.contactEmail : "none");
+  fd.append('offerType', leadData.dealType || "none");
+  fd.append('city', leadData.city || "none");
+  fd.append('district', leadData.district && leadData.district !== 'not disclosed' ? leadData.district : "none");
+  fd.append('estateType', leadData.estateType || "none");
+  fd.append('description', leadData.description || "none");
+
+  // Optional: Keep photos if available
+  if (Array.isArray(leadData.photoRefs)) {
+    leadData.photoRefs.forEach(url => fd.append('photoRefs', url));
+  }
+
+  const response = await fetch(DB_POST_URL, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${AIRTABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      records: [
-        {
-          fields: {
-            contactName: leadData.contactName || "",
-            contactEmail: leadData.contactEmail && leadData.contactEmail !== "not disclosed" ? leadData.contactEmail : undefined,
-            contactPhone: leadData.contactPhone || "",
-            dealType: leadData.dealType || "",
-            estateType: leadData.estateType || undefined,
-            city: leadData.city || "",
-            district: leadData.district && leadData.district !== "not disclosed" ? leadData.district : undefined,
-            description: leadData.description || "",
-            photoRefs: Array.isArray(leadData.photoRefs) && leadData.photoRefs.length > 0
-              ? leadData.photoRefs.map((url) => ({ url }))
-              : undefined,
-          },
-        },
-      ],
-    }),
+    // headers: {
+    //   Authorization: `Bearer ${DB_API_KEY}`,
+    // },
+    body: fd,
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Airtable error: ${response.status} - ${errorText} `);
+    throw new Error(`External API error: ${response.status} - ${errorText}`);
   }
 
   return await response.json();
@@ -187,13 +191,13 @@ export async function sendChatMessage(
     if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
       const toolCall = choice.message.tool_calls[0];
       const leadData = JSON.parse(toolCall.function.arguments);
-      let airtableSuccess = false;
+      let dbSuccess = false;
 
       try {
-        await submitToAirtable(leadData);
-        airtableSuccess = true;
+        await submitToExternalAPI(leadData);
+        dbSuccess = true;
       } catch (error) {
-        console.error("Airtable submission failed:", error);
+        console.error("External API submission failed:", error);
       }
 
       // Send tool output back to OpenAI to get final confirmation message
@@ -203,7 +207,7 @@ export async function sendChatMessage(
         {
           role: "tool",
           tool_call_id: toolCall.id,
-          content: airtableSuccess
+          content: dbSuccess
             ? "Заявката е успешно подадена в системата."
             : "Заявката е записана локално.",
         },
@@ -231,7 +235,7 @@ export async function sendChatMessage(
         message: followUpData.choices[0].message.content,
         leadSubmitted: true,
         leadData,
-        airtableSuccess
+        dbSuccess
       };
     }
 
