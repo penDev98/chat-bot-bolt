@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import type { ChatMessage, QuickReply } from '../types/chat';
-import { sendChatMessage, uploadPhoto } from '../lib/api';
+import { sendChatMessage } from '../lib/api';
 
 // Helper to generate context-aware suggestions
 // Priority: most specific (latest in conversation flow) checked FIRST
@@ -292,16 +292,13 @@ export function useChatAgent() {
       const urls: string[] = [];
 
       for (const file of files) {
-        try {
-          const url = await uploadPhoto(file);
-          urls.push(url);
-          
-          // Store the file object in a global registry so the API can find it later during submission
-          if (!(window as any)._uploadedFiles) (window as any)._uploadedFiles = new Map<string, File>();
-          (window as any)._uploadedFiles.set(url, file);
-        } catch {
-          // skip failed uploads
-        }
+        // Create a local preview URL instead of uploading to Cloudinary
+        const url = URL.createObjectURL(file);
+        urls.push(url);
+        
+        // Store the file object in a global registry so the API can find it later during submission
+        if (!(window as any)._uploadedFiles) (window as any)._uploadedFiles = new Map<string, File>();
+        (window as any)._uploadedFiles.set(url, file);
       }
 
       setIsLoading(false);
@@ -320,7 +317,14 @@ export function useChatAgent() {
     setMessages([INITIAL_MESSAGE]);
     setLeadSubmitted(false);
     idCounter.current = 0;
-    if ((window as any)._uploadedFiles) (window as any)._uploadedFiles.clear();
+    
+    // Revoke and clear local photo URLs
+    if ((window as any)._uploadedFiles) {
+      (window as any)._uploadedFiles.forEach((_: File, url: string) => {
+        if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+      });
+      (window as any)._uploadedFiles.clear();
+    }
   }, []);
 
   return {
