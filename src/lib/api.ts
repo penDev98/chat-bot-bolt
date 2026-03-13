@@ -1,7 +1,6 @@
 import type { ChatResponse, LeadData } from '../types/chat';
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
-const DB_API_KEY = import.meta.env.VITE_DB_API_KEY;
 const DB_POST_URL = import.meta.env.VITE_DB_POST_URL;
 
 const SYSTEM_PROMPT = `### Role
@@ -141,9 +140,6 @@ async function submitToExternalAPI(leadData: LeadData) {
 
   const response = await fetch(DB_POST_URL, {
     method: "POST",
-    // headers: {
-    //   Authorization: `Bearer ${DB_API_KEY}`,
-    // },
     body: fd,
   });
 
