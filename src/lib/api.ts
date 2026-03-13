@@ -21,8 +21,8 @@ const SYSTEM_PROMPT = `### Role
 ### Goals
 Събери информация стъпка по стъпка, като задаваш по 1 въпрос:
 
-1. offerType: Разбери какво иска клиента от следните 4 опции: 'sale' (продажба), 'rent' (наем), 'estimation' (оценка) или 'consultation' (консултация)
-2. В зависимост от offerType, събери следните данни:
+1. dealType: Разбери какво иска клиента от следните 4 опции: 'sale' (продажба), 'rent' (наем), 'estimation' (оценка) или 'consultation' (консултация)
+2. В зависимост от dealType, събери следните данни:
    - За 'sale', 'rent' и 'estimation': ЗАДАЛЖИТЕЛНО събери следните 5 детайла, като питаш за тях ЕДИН ПО ЕДИН (по 1 въпрос на съобщение!):
      1) Тип на имота (1-стаен, 2-стаен, 3-таен, мезонет, къща и т.н.)
      2) Площ (в кв.м.)
@@ -31,15 +31,15 @@ const SYSTEM_PROMPT = `### Role
      5) Обзаведен или необзаведен
      В СЛЕДВАЩО СЪОБЩЕНИЕ попитай за град (ако не е ясен) и район (НЕ ГИ ПИТАЙ ЕДНОВРЕМЕННО).
      
-     АКО offerType e 'estimation': САМО СЛЕД като имаш ВСИЧКИ тези данни (5-те детайла + град и район), генерирай реалистична към момента приблизителна пазарна оценка (пълна крайна цена). Базирай се на общи познания за имотния пазар в България.
+     АКО dealType e 'estimation': САМО СЛЕД като имаш ВСИЧКИ тези данни (5-те детайла + град и район), генерирай реалистична към момента приблизителна пазарна оценка във вид на реалистичен ценови диапазон (от-до). Базирай се на общи познания за имотния пазар в България.
      ФОРМАТИРАЙ отговора за оценката ТОЧНО по следния шаблон (в два параграфа):
      "Събрали сме всички нужни данни. Имотът е [ТИП], [ПЛОЩ] квадратни метра, на [ЕТАЖ]-ти етаж, с [БРОЙ] спални и е [ОБЗАВЕЖДАНЕ]. Намира се в [ГРАД], район [РАЙОН]."
-     "Приблизителната пазарна оценка за такива имоти в [РАЙОН] е около [СУМА] евро. Желаете ли да се свържете с наш консултант за по-точна оценка?"
-     Ако потребителят отговори "Да" или "Да, желая", премини към Стъпка 3: поискай Име и Телефон, обобщи данните и ЗАДЪЛЖИТЕЛНО извикай submit_lead (като предадеш offerType: 'estimation'). Ако отговори "Не" или "Не, благодаря", приключи разговора любезно.
+     "Приблизителният ценови диапазон за такива имоти в [РАЙОН] е между [СУМА_ОТ] и [СУМА_ДО] евро. Желаете ли да се свържете с наш консултант за по-точна оценка?"
+     Ако потребителят отговори "Да" или "Да, желая", премини към Стъпка 3: поискай Име и Телефон, обобщи данните и ЗАДЪЛЖИТЕЛНО извикай submit_lead (като предадеш dealType: 'estimation'). Ако отговори "Не" или "Не, благодаря", приключи разговора любезно.
    - За 'consultation': Попитай ТОЧНО с тези думи: "С какво мога да ви помогна?". Нищо друго.
 3. След като изясниш основната нужда в зависимост от типа:
-   - contactName & phone: Име и телефон за обратна връзка
-   - email: Поискай имейл за контакт, но изрично спомени, че не е задължително
+   - contactName & contactPhone: Име и телефон за обратна връзка
+   - contactEmail: Поискай имейл за контакт, но изрично спомени, че не е задължително
    - description: Когато питаш за повече информация за имота, използвай ТОЧНО тази фраза: "Ще ни е необходима малко повече информация за вашия имот"
    - photoRefs: Ако е продажба или наем, насърчи потребителя да прикачи снимки чрез бутона долу вляво. Ако няма, задай празен масив []
 
@@ -50,10 +50,10 @@ const SYSTEM_PROMPT = `### Role
 - Комуникирай САМО на български език
 - НИКОГА, ПРИ НИКАКВИ ОБСТОЯТЕЛСТВА не задавай два въпроса в едно съобщение. Всеки въпрос трябва да е отделен (например, първо питай за град, после изчакай отговор, и чак тогава питай за район).
 - НЕ извиквай submit_lead докато не си събрал контактната информация (име и телефон) и основната информация за търсенето.
-- offerType ТРЯБВА да е: 'sale', 'rent', 'estimation' или 'consultation'
+- dealType ТРЯБВА да е: 'sale', 'rent', 'estimation' или 'consultation'
 - Използвай вътрешни "not disclosed" само ако потребителят откаже дадена информация, без да го споменаваш. При имейл изясни, че е опционален.
 - Когато поискаш снимки, кажи на потребителя да използва бутона за снимки долу вляво в чата. НИКОГА не споменавай URL адреси и не използвай емоджита.
-- Пиши съкращенията изцяло: вместо "кв.м" пиши "квадратни метра", вместо "бр." пиши "броя", вместо "ет." пиши "етаж" и т.н.
+- Пиши съкращенията изцяло: вместо "кв.м" пиши "квадратни метра", вместо "броя" пиши "броя", вместо "ет." пиши "етаж" и т.н.
 - Преди да извикаш submit_lead, ОБОБЩИ събраната информация и попитай потребителя дали е правилна (дали всичко е наред или искат да добавят/редактират нещо).
 - Ако потребителят зададе въпрос извън темата за недвижими имоти, учтиво го насочи обратно`;
 
@@ -63,14 +63,19 @@ const tools = [
     function: {
       name: "submit_lead",
       description:
-        "Подай квалифицираната заявка за имот към базата данни. Извикай САМО когато си събрал поне contactName, phone, offerType и city, и потребителят е потвърдил данните.",
+        "Подай квалифицираната заявка за имот към базата данни. Извикай САМО когато си събрал поне contactName, contactPhone, dealType и city, и потребителят е потвърдил данните.",
       parameters: {
         type: "object",
         properties: {
-          offerType: {
+          dealType: {
             type: "string",
             enum: ["sale", "rent", "estimation", "consultation"],
             description: "Тип: 'sale' (продажба), 'rent' (наем), 'estimation' (оценка), 'consultation' (консултация)",
+          },
+          estateType: {
+            type: "string",
+            enum: ["studio", "two_room", "three_room", "four_room", "multi_room", "maisonette", "atelier", "house_floor", "house", "store", "office", "restaurant", "garage", "warehouse", "industrial", "industrial_land", "parcel", "hotel", "other"],
+            description: "Тип на имота. Трябва да е една от тези английски стойности: studio (1-стаен), two_room (2-стаен), three_room (3-стаен), four_room (4-стаен), multi_room (Многостаен), maisonette (Мезонет), atelier (Ателие / таван), house_floor (Етаж от къща), house (Къща), store (Магазин), office (Офис), restaurant (Заведение), garage (Гараж), warehouse (Склад), industrial (Промишлен обект), industrial_land (Промишлен терен), parcel (Парцел), hotel (Хотел), other (Друг).",
           },
           city: {
             type: "string",
@@ -85,11 +90,11 @@ const tools = [
             type: "string",
             description: "Пълно име за контакт",
           },
-          phone: {
+          contactPhone: {
             type: "string",
             description: "Телефонен номер за контакт",
           },
-          email: {
+          contactEmail: {
             type: "string",
             description:
               "Имейл адрес. 'not disclosed' ако не е предоставен",
@@ -104,7 +109,7 @@ const tools = [
             description: "Масив с URL адреси на качени снимки",
           },
         },
-        required: ["offerType", "city", "contactName", "phone"],
+        required: ["dealType", "city", "contactName", "contactPhone"],
       },
     },
   },
@@ -122,15 +127,16 @@ async function submitToAirtable(leadData: LeadData) {
         {
           fields: {
             contactName: leadData.contactName || "",
-            email: leadData.email || "not disclosed",
-            phone: leadData.phone || "",
-            offerType: leadData.offerType || "",
+            contactEmail: leadData.contactEmail && leadData.contactEmail !== "not disclosed" ? leadData.contactEmail : undefined,
+            contactPhone: leadData.contactPhone || "",
+            dealType: leadData.dealType || "",
+            estateType: leadData.estateType || undefined,
             city: leadData.city || "",
-            district: leadData.district || "not disclosed",
+            district: leadData.district && leadData.district !== "not disclosed" ? leadData.district : undefined,
             description: leadData.description || "",
-            photoRefs: Array.isArray(leadData.photoRefs)
-              ? leadData.photoRefs.join(", ")
-              : "",
+            photoRefs: Array.isArray(leadData.photoRefs) && leadData.photoRefs.length > 0
+              ? leadData.photoRefs.map((url) => ({ url }))
+              : undefined,
           },
         },
       ],
@@ -139,7 +145,7 @@ async function submitToAirtable(leadData: LeadData) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Airtable error: ${response.status} - ${errorText}`);
+    throw new Error(`Airtable error: ${response.status} - ${errorText} `);
   }
 
   return await response.json();
@@ -157,7 +163,7 @@ export async function sendChatMessage(
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY} `,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -171,7 +177,7 @@ export async function sendChatMessage(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error?.message || `OpenAI API error: ${response.status}`);
+      throw new Error(errorData.error?.message || `OpenAI API error: ${response.status} `);
     }
 
     const data = await response.json();
@@ -206,7 +212,7 @@ export async function sendChatMessage(
       const followUpResponse = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          Authorization: `Bearer ${OPENAI_API_KEY} `,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -217,7 +223,7 @@ export async function sendChatMessage(
       });
 
       if (!followUpResponse.ok) {
-        throw new Error(`OpenAI Follow-up error: ${followUpResponse.status}`);
+        throw new Error(`OpenAI Follow - up error: ${followUpResponse.status} `);
       }
 
       const followUpData = await followUpResponse.json();

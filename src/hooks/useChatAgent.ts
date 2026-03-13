@@ -50,8 +50,22 @@ function generateSuggestions(content: string): QuickReply[] {
       { label: '1-стаен', value: '1-стаен' },
       { label: '2-стаен', value: '2-стаен' },
       { label: '3-стаен', value: '3-стаен' },
+      { label: '4-стаен', value: '4-стаен' },
+      { label: 'Многостаен', value: 'Многостаен' },
+      { label: 'Мезонет', value: 'Мезонет' },
+      { label: 'Ателие / таван', value: 'Ателие / таван' },
+      { label: 'Етаж от къща', value: 'Етаж от къща' },
       { label: 'Къща', value: 'Къща' },
-      { label: 'Друг', value: 'ACTION_FOCUS' }
+      { label: 'Магазин', value: 'Магазин' },
+      { label: 'Офис', value: 'Офис' },
+      { label: 'Заведение', value: 'Заведение' },
+      { label: 'Гараж', value: 'Гараж' },
+      { label: 'Склад', value: 'Склад' },
+      { label: 'Промишлен обект', value: 'Промишлен обект' },
+      { label: 'Промишлен терен', value: 'Промишлен терен' },
+      { label: 'Парцел', value: 'Парцел' },
+      { label: 'Хотел', value: 'Хотел' },
+      { label: 'Друг', value: 'Друг' }
     ];
   }
 
@@ -241,7 +255,7 @@ export function useChatAgent() {
           role: 'assistant',
           content: response.message,
           timestamp: new Date(),
-          suggestions: generateSuggestions(response.message).slice(0, 6) // Limit to 6 to include "Друг"
+          suggestions: generateSuggestions(response.message)
         };
 
         const withAssistant = [...messagesRef.current, assistantMsg];

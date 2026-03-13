@@ -112,6 +112,20 @@ body {
   }
 }
 
+/* ─── Border Glow Animation ─── */
+@keyframes borderGlow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(42, 48, 117, 0.1), 0 0 20px rgba(91, 159, 215, 0.05);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(42, 48, 117, 0.3), 0 0 35px rgba(91, 159, 215, 0.2);
+  }
+}
+
+.animate-border-glow {
+  animation: borderGlow 3s infinite ease-in-out;
+}
+
 /* ─── Voice pulse ring ─── */
 .voice-pulse {
   animation: voicePulse 1.5s infinite;

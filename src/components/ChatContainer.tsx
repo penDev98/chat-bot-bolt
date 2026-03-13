@@ -120,9 +120,13 @@ export default function ChatContainer() {
 
   // Find the ID of the LAST assistant message in the list
   let lastAssistantMessageId: string | null = null;
+  let forceSelection = false;
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].role === 'assistant') {
       lastAssistantMessageId = messages[i].id;
+      if (messages[i].suggestions?.length === 19) {
+        forceSelection = true;
+      }
       break;
     }
   }
@@ -264,15 +268,20 @@ export default function ChatContainer() {
       </div>
 
       {/* ─── Input Area ─── */}
-      <div className="bg-white border-t border-slate-200 p-4">
-        <div className="max-w-2xl mx-auto">
+      <div className="bg-white/40 backdrop-blur-2xl border-t border-slate-200/50 p-4 pb-6 relative overflow-hidden">
+        {/* Decorative background flare */}
+        <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -top-24 -right-24 w-64 h-64 bg-secondary/5 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="max-w-2xl mx-auto relative">
           <ChatInput
             onSend={handleSendMessage}
             onPhotoUpload={handlePhotoUpload}
             onVoiceToggle={handleVoiceToggle}
             voiceActive={voiceActive}
             voiceListening={isListening}
-            disabled={isLoading || (leadSubmitted && !voiceActive)}
+            disabled={isLoading || (leadSubmitted && !voiceActive) || forceSelection}
+            forceSelection={forceSelection}
           />
         </div>
       </div>

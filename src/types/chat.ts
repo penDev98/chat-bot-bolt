@@ -8,14 +8,15 @@ export interface ChatMessage {
 }
 
 export interface LeadData {
-  offerType: 'sale' | 'rent';
+  dealType: 'sale' | 'rent' | 'estimation' | 'consultation';
+  estateType?: 'studio' | 'two_room' | 'three_room' | 'four_room' | 'multi_room' | 'maisonette' | 'atelier' | 'house_floor' | 'house' | 'store' | 'office' | 'restaurant' | 'garage' | 'warehouse' | 'industrial' | 'industrial_land' | 'parcel' | 'hotel' | 'other';
   city: string;
-  district: string;
+  district?: string;
   contactName: string;
-  phone: string;
-  email: string;
+  contactPhone: string;
+  contactEmail?: string;
   description: string;
-  photoRefs: string[];
+  photoRefs?: string[];
 }
 
 export interface ChatResponse {
