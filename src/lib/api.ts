@@ -123,15 +123,15 @@ async function submitToExternalAPI(leadData: LeadData) {
   const lastName = nameParts.slice(1).join(" ") || "";
 
   // Map to the required fields shown in the target system
-  fd.append('firstName', firstName);
-  fd.append('lastName', lastName);
-  fd.append('phone', leadData.contactPhone || "");
-  fd.append('email', leadData.contactEmail && leadData.contactEmail !== 'not disclosed' ? leadData.contactEmail : "");
-  fd.append('offerType', leadData.dealType || "");
-  fd.append('city', leadData.city || "");
-  fd.append('district', leadData.district && leadData.district !== 'not disclosed' ? leadData.district : "");
-  fd.append('estateType', leadData.estateType || "");
-  fd.append('description', leadData.description || "");
+  fd.append('firstName', firstName || "null");
+  fd.append('lastName', lastName || "null");
+  fd.append('phone', leadData.contactPhone || "null");
+  fd.append('email', leadData.contactEmail && leadData.contactEmail !== 'not disclosed' ? leadData.contactEmail : "null");
+  fd.append('offerType', leadData.dealType || "null");
+  fd.append('city', leadData.city || "null");
+  fd.append('district', leadData.district && leadData.district !== 'not disclosed' ? leadData.district : "null");
+  fd.append('estateType', leadData.estateType || "null");
+  fd.append('description', leadData.description || "null");
 
   // Optional: Keep photos if available
   if (Array.isArray(leadData.photoRefs)) {
