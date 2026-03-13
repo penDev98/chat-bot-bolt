@@ -1,0 +1,5 @@
+[[redirects]]
+  from = "/api/external/*"
+  to = "https://100imoti-fe.vercel.app/api/:splat"
+  status = 200
+  force = true
