@@ -295,6 +295,10 @@ export function useChatAgent() {
         try {
           const url = await uploadPhoto(file);
           urls.push(url);
+          
+          // Store the file object in a global registry so the API can find it later during submission
+          if (!(window as any)._uploadedFiles) (window as any)._uploadedFiles = new Map<string, File>();
+          (window as any)._uploadedFiles.set(url, file);
         } catch {
           // skip failed uploads
         }
@@ -316,6 +320,7 @@ export function useChatAgent() {
     setMessages([INITIAL_MESSAGE]);
     setLeadSubmitted(false);
     idCounter.current = 0;
+    if ((window as any)._uploadedFiles) (window as any)._uploadedFiles.clear();
   }, []);
 
   return {

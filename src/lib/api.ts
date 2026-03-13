@@ -135,7 +135,16 @@ async function submitToExternalAPI(leadData: LeadData) {
 
   // Optional: Keep photos if available
   if (Array.isArray(leadData.photoRefs)) {
-    leadData.photoRefs.forEach(url => fd.append('photoRefs', url));
+    leadData.photoRefs.forEach(url => {
+      // Find the original File object if available in our global registry
+      const originalFile = (window as any)._uploadedFiles?.get(url);
+      if (originalFile) {
+        fd.append('photos', originalFile, originalFile.name);
+      } else {
+        // Fallback to sending the URL if file object isn't available
+        fd.append('photos', url);
+      }
+    });
   }
 
   const response = await fetch(DB_POST_URL, {
