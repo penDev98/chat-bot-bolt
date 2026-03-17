@@ -83,7 +83,7 @@ export default function ChatInput({
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="relative flex items-end gap-2">
+      <form onSubmit={handleSubmit} className="relative flex items-end gap-2 min-w-0">
         <input
           type="file"
           ref={fileInputRef}
@@ -93,12 +93,12 @@ export default function ChatInput({
           className="hidden"
         />
 
-        <div className="flex-1 relative group animate-fade-in-up">
+        <div className="flex-1 relative group animate-fade-in-up min-w-0">
           {/* External Gradient Border / Glow */}
           <div className="absolute -inset-[1.5px] bg-gradient-to-r from-primary via-secondary to-accent rounded-2xl opacity-40 blur-[0.5px] group-focus-within:opacity-100 group-hover:opacity-70 transition-all duration-500 animate-border-glow" />
           
           {/* Main Input Container */}
-          <div className="relative bg-white rounded-2xl flex items-center shadow-[0_12px_40px_-12px_rgba(42,48,117,0.22)] ring-1 ring-white/50">
+          <div className="relative bg-white rounded-2xl flex items-center shadow-[0_12px_40px_-12px_rgba(42,48,117,0.22)] ring-1 ring-white/50 min-w-0">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}

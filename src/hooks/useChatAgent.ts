@@ -1,6 +1,13 @@
 import { useState, useCallback, useRef } from 'react';
 import type { ChatMessage, QuickReply } from '../types/chat';
-import { sendChatMessage } from '../lib/api';
+import { sendChatMessage, submitToExternalAPI } from '../lib/api';
+import type { LeadData } from '../types/chat';
+
+// Helper: add a ПРОПУСНИ (Skip) button to suggestion arrays
+// except for name & phone questions
+function withSkip(suggestions: QuickReply[], skipLabel = 'Пропусни'): QuickReply[] {
+  return [...suggestions, { label: skipLabel, value: 'Пропусни' }];
+}
 
 // Helper to generate context-aware suggestions
 // Priority: most specific (latest in conversation flow) checked FIRST
@@ -10,22 +17,33 @@ function generateSuggestions(content: string): QuickReply[] {
   // ── Exclusions: questions that need free-text input → no buttons ──
   const needsCustomInput = [
     'как се казвате', 'вашето име', 'вашите имена', 'име и фамилия',
+    'с кого разговарям',
     'телефон', 'номер за контакт', 'номер за връзка', 'обадим',
-    'цена', 'каква цена', 'колко струва', 'за колко',
+    'каква цена', 'колко струва', 'за колко', 'очакваната',
     'адрес', 'точен адрес', 'на кой адрес',
     'площ', 'квадратур', 'колко квадрат',
     'стаи', 'колко стаи', 'брой стаи',
     'етаж', 'на кой етаж',
-    'спални', 'колко спални'
+    'кадастрал', 'идентификатор',
+    'допълнителна информация', 'допълнително'
   ];
 
+  // Name & phone questions — free text, NO skip button
+  const isNameQuestion = text.includes('с кого разговарям') || text.includes('вашето име') || text.includes('как се казвате');
+  const isPhoneQuestion = (text.includes('телефон') || text.includes('номер за контакт') || text.includes('номер за връзка')) && !text.includes('град');
+
+  if (isNameQuestion || isPhoneQuestion) {
+    return []; // Free text only, no skip
+  }
+
+  // For other free-text questions, provide a Skip button
   if (needsCustomInput.some((phrase) => text.includes(phrase))) {
-    return [];
+    return [{ label: 'Пропусни', value: 'Пропусни' }];
   }
 
   // 0. Consultation explicit catch
   if (text.includes('с какво мога да ви помогна') || text.includes('нужда от помощ') || text.includes('повече информация за вашия имот')) {
-    return []; // Auto-focus will trigger natively when suggestions are empty
+    return [];
   }
 
   // 1. Confirming details at the end
@@ -44,9 +62,53 @@ function generateSuggestions(content: string): QuickReply[] {
     ];
   }
 
-  // 2. Asking about property type
-  if (text.includes('какъв тип') || text.includes('вид имот') || text.includes('какъв имот') || text.includes('тип на имот') || text.includes('вид на имот') || text.includes('типът') || text.includes('типа') || text.includes('стаен') || text.includes('мезонет')) {
+  // 2.1 Construction type question
+  if (text.includes('тип строителство') || text.includes('типът строителство') || text.includes('вид строителство')) {
+    return withSkip([
+      { label: 'Тухла', value: 'Тухла' },
+      { label: 'Панел', value: 'Панел' },
+      { label: 'ЕПК', value: 'ЕПК' },
+      { label: 'Друго', value: 'ACTION_FOCUS' }
+    ]);
+  }
+
+  // 2.2 Asking about furnishing
+  if (text.includes('обзаведен') || text.includes('обзавеждане')) {
+    return withSkip([
+      { label: 'Обзаведен', value: 'Обзаведен' },
+      { label: 'Необзаведен', value: 'Необзаведен' }
+    ]);
+  }
+
+  // 2.3 Regulation question (for parcels)
+  if (text.includes('регулация')) {
+    return withSkip([
+      { label: 'Да', value: 'Да' },
+      { label: 'Не', value: 'Не' },
+      { label: 'Друго', value: 'ACTION_FOCUS' }
+    ]);
+  }
+
+  // 2.4 Pets question (for rent)
+  if (text.includes('домашни любимци') || text.includes('любимци')) {
+    return withSkip([
+      { label: 'Да', value: 'Да' },
+      { label: 'Не', value: 'Не' },
+      { label: 'Друго', value: 'ACTION_FOCUS' }
+    ]);
+  }
+
+  // 2.5 Consultant Prompt (High Priority)
+  if (text.includes('да се свържете с наш консултант') || text.includes('по-точна оценка')) {
     return [
+      { label: 'Да, желая', value: 'Да, желая да се свържа с консултант.' },
+      { label: 'Начало', value: 'ACTION_RELOAD' }
+    ];
+  }
+
+  // 2. Asking about property type (Moved down as it's more broad)
+  if (text.includes('какъв тип') || text.includes('вид имот') || text.includes('какъв имот') || text.includes('тип на имот') || text.includes('вид на имот') || text.includes('типът') || text.includes('типа') || text.includes('стаен') || text.includes('мезонет')) {
+    return withSkip([
       { label: '1-стаен', value: '1-стаен' },
       { label: '2-стаен', value: '2-стаен' },
       { label: '3-стаен', value: '3-стаен' },
@@ -54,6 +116,7 @@ function generateSuggestions(content: string): QuickReply[] {
       { label: 'Многостаен', value: 'Многостаен' },
       { label: 'Мезонет', value: 'Мезонет' },
       { label: 'Ателие / таван', value: 'Ателие / таван' },
+      { label: 'Парцел', value: 'Парцел' },
       { label: 'Етаж от къща', value: 'Етаж от къща' },
       { label: 'Къща', value: 'Къща' },
       { label: 'Магазин', value: 'Магазин' },
@@ -63,102 +126,82 @@ function generateSuggestions(content: string): QuickReply[] {
       { label: 'Склад', value: 'Склад' },
       { label: 'Промишлен обект', value: 'Промишлен обект' },
       { label: 'Промишлен терен', value: 'Промишлен терен' },
-      { label: 'Парцел', value: 'Парцел' },
       { label: 'Хотел', value: 'Хотел' },
       { label: 'Друг', value: 'Друг' }
-    ];
-  }
-
-  // 2.2 Asking about furnishing
-  if (text.includes('обзаведен') || text.includes('обзавеждане')) {
-    return [
-      { label: 'Обзаведен', value: 'Обзаведен' },
-      { label: 'Необзаведен', value: 'Необзаведен' }
-    ];
-  }
-
-  // 2.5 Consultant Prompt (High Priority - must beat location phrases like "Лозенец" in the summary)
-  if (text.includes('да се свържете с наш консултант') || text.includes('по-точна оценка')) {
-    return [
-      { label: 'Да, желая', value: 'Да, желая да се свържа с консултант.' },
-      { label: 'Начало', value: 'ACTION_RELOAD' }
-    ];
+    ]);
   }
 
   // 3. Asking about area / neighborhood
   if (text.includes('район') || text.includes('квартал') || text.includes('кой квартал') || text.includes('кой район') || text.includes('част на')) {
     // If it's a specific city check, we add others
     if (text.includes('софия')) {
-      return [
+      return withSkip([
         { label: 'Център', value: 'Център' },
         { label: 'Лозенец', value: 'Лозенец' },
         { label: 'Младост', value: 'Младост' },
         { label: 'Люлин', value: 'Люлин' },
         { label: 'Витоша', value: 'Витоша' },
         { label: 'Друг', value: 'ACTION_FOCUS' }
-      ];
+      ]);
     }
 
     if (text.includes('бургас')) {
-      return [
+      return withSkip([
         { label: 'Център', value: 'Център' },
         { label: 'Лазур', value: 'Лазур' },
         { label: 'Изгрев', value: 'Изгрев' },
         { label: 'Славейков', value: 'Славейков' },
         { label: 'Меден рудник', value: 'Меден рудник' },
         { label: 'Друг', value: 'ACTION_FOCUS' }
-      ];
+      ]);
     }
 
     if (text.includes('пловдив')) {
-      return [
+      return withSkip([
         { label: 'Център', value: 'Център' },
         { label: 'Тракия', value: 'Тракия' },
         { label: 'Смирненски', value: 'Смирненски' },
         { label: 'Кючук Париж', value: 'Кючук Париж' },
         { label: 'Кършияка', value: 'Кършияка' },
         { label: 'Друг', value: 'ACTION_FOCUS' }
-      ];
+      ]);
     }
 
     if (text.includes('варна')) {
-      return [
+      return withSkip([
         { label: 'Център', value: 'Център' },
         { label: 'Левски', value: 'Левски' },
         { label: 'Младост', value: 'Младост' },
         { label: 'Владиславово', value: 'Владиславово' },
         { label: 'Бриз', value: 'Бриз' },
         { label: 'Друг', value: 'ACTION_FOCUS' }
-      ];
+      ]);
     }
 
-    return [
+    return withSkip([
       { label: 'Център', value: 'Център' },
       { label: 'Лозенец', value: 'Лозенец' },
       { label: 'Младост', value: 'Младост' },
       { label: 'Люлин', value: 'Люлин' },
       { label: 'Витоша', value: 'Витоша' },
       { label: 'Друг', value: 'ACTION_FOCUS' }
-    ];
+    ]);
   }
 
   // 4. Asking about city / location
   if (text.includes('къде') || text.includes('град') || text.includes('местоположение') || text.includes('населено място') || text.includes('кой град') || text.includes('локация')) {
-    return [
+    return withSkip([
       { label: 'София', value: 'София' },
       { label: 'Пловдив', value: 'Пловдив' },
       { label: 'Варна', value: 'Варна' },
       { label: 'Бургас', value: 'Бургас' },
       { label: 'Друг', value: 'ACTION_FOCUS' }
-    ];
+    ]);
   }
 
   // 5. Asking about photos
-  if (text.includes('снимки') || text.includes('снимка') || text.includes('прикач') || text.includes('фото')) {
-    return [
-      { label: 'Прикачване', value: 'Искам да прикача снимки.' },
-      { label: 'Нямам снимки', value: 'Нямам снимки за момента.' }
-    ];
+  if (text.includes('снимки') || text.includes('снимка') || text.includes('прикач') || text.includes('фото') || text.includes('скица')) {
+    return [{ label: 'Пропусни', value: 'Пропусни' }];
   }
 
   // 5.5 Asking about email
@@ -178,7 +221,7 @@ function generateSuggestions(content: string): QuickReply[] {
   }
 
   // 7. Asking about sell vs rent vs estimation vs consultation — least specific, checked last
-  if (text.includes('продадете') || text.includes('продажба') || text.includes('наем') || text.includes('отдадете') || text.includes('продавате') || text.includes('отдавате') || text.includes('оценка') || text.includes('консултация')) {
+  if (text.includes('продадете') || text.includes('продажба') || text.includes('наем') || text.includes('отдадете') || text.includes('продавате') || text.includes('отдавате') || text.includes('оценка') || text.includes('консултация') || text.includes('как мога да помогна')) {
     return [
       { label: 'Продажба', value: 'Искам да продам имот' },
       { label: 'Наем', value: 'Искам да отдам имот под наем' },
@@ -201,7 +244,7 @@ const INITIAL_MESSAGE: ChatMessage = {
   id: 'init-1',
   role: 'assistant',
   content:
-    'Здравейте! Аз съм Алекс - вашият виртуален асистент от Столични имоти.\n\nКак мога да помогна във връзка с ваш имот?',
+    'Здравейте! Аз съм Силви - вашият виртуален асистент.\n\nКак мога да помогна във връзка с ваш имот?',
   timestamp: new Date(),
   suggestions: [
     { label: 'Продажба', value: 'Искам да продам имот.' },
@@ -250,15 +293,19 @@ export function useChatAgent() {
 
         const response = await sendChatMessage(apiMessages);
 
-        const assistantMsg: ChatMessage = {
-          id: nextId(),
+        // Split message by double newline into separate bubbles
+        const botParts = response.message.split('\n\n').filter(p => p.trim() !== '');
+        
+        const assistantMessages: ChatMessage[] = botParts.map((part, idx) => ({
+          id: nextId() + (idx > 0 ? `-${idx}` : ''),
           role: 'assistant',
-          content: response.message,
+          content: part.trim(),
           timestamp: new Date(),
-          suggestions: generateSuggestions(response.message)
-        };
+          // Only the last bubble gets the suggestions
+          suggestions: idx === botParts.length - 1 ? generateSuggestions(response.message) : []
+        }));
 
-        const withAssistant = [...messagesRef.current, assistantMsg];
+        const withAssistant = [...messagesRef.current, ...assistantMessages];
         messagesRef.current = withAssistant;
         setMessages(withAssistant);
 
@@ -266,7 +313,7 @@ export function useChatAgent() {
           setLeadSubmitted(true);
         }
 
-        return assistantMsg.content;
+        return response.message;
       } catch {
         const errorMsg: ChatMessage = {
           id: nextId(),
@@ -327,6 +374,81 @@ export function useChatAgent() {
     }
   }, []);
 
+  // Submit whatever data has been gathered so far and reset the chat
+  const submitPartialAndReset = useCallback(async () => {
+    const currentMessages = messagesRef.current;
+    
+    // Try to extract gathered data from conversation messages
+    const allText = currentMessages.map(m => m.content).join('\n');
+    
+    // Extract photo URLs from user messages
+    const photoRefs: string[] = [];
+    currentMessages.forEach(m => {
+      if (m.photoUrls) photoRefs.push(...m.photoUrls);
+    });
+
+    // Build partial lead data with defaults for missing fields
+    const partialData: LeadData = {
+      dealType: 'consultation',
+      city: 'null',
+      contactName: 'null',
+      contactPhone: 'null',
+      contactEmail: 'null',
+      description: 'Чатът беше затворен преди завършване. Събрана информация: ' + allText.substring(0, 500),
+      estateType: 'other',
+      district: 'null',
+      photoRefs,
+    };
+
+    // Try to detect dealType from conversation
+    const lowerText = allText.toLowerCase();
+    if (lowerText.includes('продам') || lowerText.includes('продажба')) partialData.dealType = 'sale';
+    else if (lowerText.includes('наем') || lowerText.includes('отдам')) partialData.dealType = 'rent';
+    else if (lowerText.includes('оценка')) partialData.dealType = 'estimation';
+
+    // Try to extract name and phone from user messages
+    for (let i = 0; i < currentMessages.length - 1; i++) {
+      const msg = currentMessages[i];
+      const nextMsg = currentMessages[i + 1];
+      if (msg.role === 'assistant' && nextMsg?.role === 'user') {
+        const aText = msg.content.toLowerCase();
+        if (aText.includes('с кого разговарям') || aText.includes('вашето име') || aText.includes('как се казвате')) {
+          if (nextMsg.content !== 'Пропусни') {
+            partialData.contactName = nextMsg.content;
+          }
+        }
+        if (aText.includes('телефон') || aText.includes('номер за връзка') || aText.includes('номер за контакт')) {
+          if (nextMsg.content !== 'Пропусни') {
+            partialData.contactPhone = nextMsg.content;
+          }
+        }
+        if (aText.includes('имейл') || aText.includes('email') || aText.includes('e-mail')) {
+          if (nextMsg.content !== 'Пропусни') {
+            partialData.contactEmail = nextMsg.content;
+          }
+        }
+        if (aText.includes('град') || aText.includes('къде')) {
+          if (nextMsg.content !== 'Пропусни') {
+            partialData.city = nextMsg.content;
+          }
+        }
+        if (aText.includes('район') || aText.includes('квартал')) {
+          if (nextMsg.content !== 'Пропусни') {
+            partialData.district = nextMsg.content;
+          }
+        }
+      }
+    }
+
+    try {
+      await submitToExternalAPI(partialData);
+    } catch (error) {
+      console.error('Partial submit on close failed:', error);
+    }
+
+    resetChat();
+  }, [resetChat]);
+
   return {
     messages,
     isLoading,
@@ -334,5 +456,6 @@ export function useChatAgent() {
     sendUserMessage,
     handlePhotoUpload,
     resetChat,
+    submitPartialAndReset,
   };
 }

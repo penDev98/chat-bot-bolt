@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { RotateCcw, Volume2 } from 'lucide-react';
+import { Volume2, X as XIcon } from 'lucide-react';
 import { useChatAgent } from '../hooks/useChatAgent';
 import { useVoiceMode } from '../hooks/useVoiceMode';
 import ChatMessage from './ChatMessage';
@@ -14,6 +14,7 @@ export default function ChatContainer() {
     sendUserMessage,
     handlePhotoUpload,
     resetChat,
+    submitPartialAndReset,
   } = useChatAgent();
 
   const {
@@ -118,13 +119,17 @@ export default function ChatContainer() {
     [sendUserMessage]
   );
 
+  const handleClose = useCallback(() => {
+    submitPartialAndReset();
+  }, [submitPartialAndReset]);
+
   // Find the ID of the LAST assistant message in the list
   let lastAssistantMessageId: string | null = null;
   let forceSelection = false;
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].role === 'assistant') {
       lastAssistantMessageId = messages[i].id;
-      if (messages[i].suggestions?.length === 19) {
+      if (messages[i].suggestions?.length === 20) {
         forceSelection = true;
       }
       break;
@@ -145,9 +150,6 @@ export default function ChatContainer() {
               />
             </div>
             <div>
-              <h1 className="text-base font-bold text-primary tracking-tight leading-tight">
-                Столични имоти
-              </h1>
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span className="text-xs text-slate-500 font-medium">
@@ -173,15 +175,14 @@ export default function ChatContainer() {
                 </span>
               </div>
             )}
-            {leadSubmitted && (
-              <button
-                onClick={resetChat}
-                className="p-2.5 rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
-                title="Нов разговор"
-              >
-                <RotateCcw className="w-5 h-5" />
-              </button>
-            )}
+            {/* Close button — always visible */}
+            <button
+              onClick={handleClose}
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
+              title="Затвори чата"
+            >
+              <XIcon className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </div>
