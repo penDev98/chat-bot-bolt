@@ -18,6 +18,7 @@ export default function ChatMessage({
   const isUser = message.role === 'user';
   const [displayedContent, setDisplayedContent] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [showSubTypes, setShowSubTypes] = useState(false);
   const animatedRef = useRef(false);
 
   // Typewriter effect for assistant messages
@@ -71,6 +72,11 @@ export default function ChatMessage({
     }
   }, [isUser, showSuggestions, isTyping, message.suggestions]);
 
+  // Reset sub-type expansion when new suggestions arrive
+  useEffect(() => {
+    setShowSubTypes(false);
+  }, [message.suggestions]);
+
   if (isUser) {
     return (
       <div className="flex justify-end px-4 py-1.5 message-enter">
@@ -95,13 +101,23 @@ export default function ChatMessage({
     );
   }
 
+  // Detect if this is the property-type question with "Друг" as a top-level option
+  const hasDrugTopLevel = message.suggestions?.some((s) => s.value === 'Друг') ?? false;
+
+  // Secondary property type options revealed when "Друг" is clicked
+  const SUB_TYPES = [
+    '4-стаен', 'Многостаен', 'Мезонет', 'Ателие / таван',
+    'Етаж от къща', 'Къща', 'Магазин', 'Офис', 'Заведение',
+    'Гараж', 'Склад', 'Промишлен обект', 'Промишлен терен', 'Хотел', 'Пропусни',
+  ];
+
   return (
     <div className="flex gap-3 px-4 py-1.5 message-enter">
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white border border-slate-100 flex items-center justify-center shadow-sm overflow-hidden mt-1">
         <img
-          src="https://cm4-production-assets.s3.amazonaws.com/1771352656526-logo354x100.png"
+          src="/agent.png"
           alt="Bot"
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover border-0"
         />
       </div>
       <div className="max-w-[85%]">
@@ -114,23 +130,64 @@ export default function ChatMessage({
           </p>
         </div>
 
-        {/* Show suggestions ONLY on latest assistant message and only after typing finishes */}
-        {showSuggestions &&
-          !isTyping &&
-          message.suggestions &&
-          message.suggestions.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-2 animate-fade-in-up">
-              {message.suggestions.map((s) => (
-                <button
-                  key={s.value}
-                  onClick={() => onSend(s.value)}
-                  className="px-4 py-2 bg-white border border-secondary/30 text-primary text-sm font-medium rounded-xl shadow-sm hover:bg-secondary/10 hover:border-secondary transition-all active:scale-95"
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          )}
+        {/* Suggestions — shown only on the latest assistant message after typing finishes */}
+        {showSuggestions && !isTyping && message.suggestions && message.suggestions.length > 0 && (
+          <>
+            {/* Top-level buttons (hidden while sub-type panel is open) */}
+            {!showSubTypes && (
+              <div className="flex flex-wrap gap-2 mt-2 animate-fade-in-up">
+                {message.suggestions.map((s) => (
+                  <button
+                    key={s.value}
+                    onClick={() => {
+                      if (s.value === 'Друг' && hasDrugTopLevel) {
+                        // Expand the secondary list — do NOT send to agent yet
+                        setShowSubTypes(true);
+                      } else {
+                        onSend(s.value);
+                      }
+                    }}
+                    className="px-4 py-2 bg-white border border-secondary/30 text-primary text-sm font-medium rounded-xl shadow-sm hover:bg-secondary/10 hover:border-secondary transition-all active:scale-95"
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Secondary sub-type selector — shown after "Друг" is clicked */}
+            {showSubTypes && (
+              <div className="mt-2 animate-fade-in-up">
+                <p className="text-xs text-slate-500 mb-2 px-1">Изберете конкретен тип:</p>
+                <div className="flex flex-wrap gap-2">
+                  {SUB_TYPES.map((label) => (
+                    <button
+                      key={label}
+                      onClick={() => {
+                        setShowSubTypes(false);
+                        onSend(label);
+                      }}
+                      className={`px-4 py-2 text-sm font-medium rounded-xl shadow-sm border transition-all active:scale-95 ${
+                        label === 'Пропусни'
+                          ? 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100'
+                          : 'bg-white border-secondary/30 text-primary hover:bg-secondary/10 hover:border-secondary'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  {/* Back button — returns to top-level without sending anything */}
+                  <button
+                    onClick={() => setShowSubTypes(false)}
+                    className="px-3 py-2 text-xs font-medium rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 transition-all active:scale-95"
+                  >
+                    ← Назад
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
 
         {/* Inline Focus Guide for free-text input */}
         {showSuggestions &&

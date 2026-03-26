@@ -36,19 +36,28 @@ export default function ChatContainer() {
 
   // Auto-scroll to bottom
   useEffect(() => {
-    // Wait for the DOM to paint the incoming message and suggestion buttons
-    const timeoutId = setTimeout(() => {
-      if (scrollContainerRef.current && messagesEndRef.current) {
-        // Explicitly calculate offset relative to the container instead of bubbling scrollIntoView
+    const scrollToBottom = () => {
+      if (scrollContainerRef.current) {
         const container = scrollContainerRef.current;
         container.scrollTo({
           top: container.scrollHeight,
           behavior: 'smooth'
         });
       }
-    }, 150);
+    };
 
-    return () => clearTimeout(timeoutId);
+    // First scroll after DOM paint
+    const t1 = setTimeout(scrollToBottom, 150);
+    // Second scroll to catch suggestion buttons that render after typing animation
+    const t2 = setTimeout(scrollToBottom, 600);
+    // Third scroll for longer messages with typewriter effect
+    const t3 = setTimeout(scrollToBottom, 1500);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
   }, [messages, isLoading]);
 
   // Broadcast dimensions for iframe hosting
@@ -144,16 +153,16 @@ export default function ChatContainer() {
           <div className="flex items-center gap-3">
             <div className="h-10 w-auto">
               <img
-                src="https://cm4-production-assets.s3.amazonaws.com/1771351056422-logo354x100.png"
+                src="/logo.png"
                 alt="Столични имоти"
                 className="h-full w-auto object-contain"
               />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
                 <span className="text-xs text-slate-500 font-medium">
-                  Онлайн асистент
+                  Имотко - вашият асистент
                 </span>
               </div>
             </div>
@@ -221,7 +230,7 @@ export default function ChatContainer() {
             <div className="flex gap-3 px-4 py-1.5 message-enter">
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white border border-slate-100 flex items-center justify-center shadow-sm overflow-hidden mt-1">
                 <img
-                  src="https://cm4-production-assets.s3.amazonaws.com/1771352656526-logo354x100.png"
+                  src="/agent.png"
                   alt="Bot"
                   className="w-full h-full object-cover"
                 />
@@ -273,7 +282,7 @@ export default function ChatContainer() {
         {/* Decorative background flare */}
         <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -top-24 -right-24 w-64 h-64 bg-secondary/5 rounded-full blur-3xl pointer-events-none" />
-        
+
         <div className="max-w-2xl mx-auto relative">
           <ChatInput
             onSend={handleSendMessage}

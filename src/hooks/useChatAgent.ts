@@ -11,8 +11,11 @@ function withSkip(suggestions: QuickReply[], skipLabel = 'Пропусни'): Qu
 
 // Helper to generate context-aware suggestions
 // Priority: most specific (latest in conversation flow) checked FIRST
-function generateSuggestions(content: string): QuickReply[] {
+// conversationContext: optional full conversation text for city detection
+function generateSuggestions(content: string, conversationContext?: string): QuickReply[] {
   const text = content.toLowerCase();
+  // For city/district detection, use the full conversation context if available
+  const fullContext = conversationContext ? conversationContext.toLowerCase() : text;
 
   // ── Exclusions: questions that need free-text input → no buttons ──
   const needsCustomInput = [
@@ -46,6 +49,14 @@ function generateSuggestions(content: string): QuickReply[] {
     return [];
   }
 
+  // 0.5 Phone validation confirmation
+  if (text.includes('сигурни ли сте') && (text.includes('номер') || text.includes('телефон'))) {
+    return [
+      { label: 'Да, правилен е', value: 'Да, номерът е правилен.' },
+      { label: 'Коригирам', value: 'ACTION_FOCUS' }
+    ];
+  }
+
   // 1. Confirming details at the end
   if (text.includes('правилно') || text.includes('потвърд') || text.includes('коректни') || text.includes('всичко е наред') || text.includes('всичко наред ли') || text.includes('добавите/редактирате')) {
     return [
@@ -70,6 +81,16 @@ function generateSuggestions(content: string): QuickReply[] {
       { label: 'ЕПК', value: 'ЕПК' },
       { label: 'Друго', value: 'ACTION_FOCUS' }
     ]);
+  }
+
+  // 2.1.5 Consultant Prompt — MUST be before furnishing check because the estimation
+  // summary message contains "обзаведен" (property description) AND the consultant question.
+  // If we check furnishing first, we get the wrong buttons.
+  if (text.includes('да се свържете с наш консултант') || text.includes('по-точна оценка')) {
+    return [
+      { label: 'Да, желая', value: 'Да, желая да се свържа с консултант.' },
+      { label: 'Начало', value: 'ACTION_RELOAD' }
+    ];
   }
 
   // 2.2 Asking about furnishing
@@ -98,25 +119,16 @@ function generateSuggestions(content: string): QuickReply[] {
     ]);
   }
 
-  // 2.5 Consultant Prompt (High Priority)
-  if (text.includes('да се свържете с наш консултант') || text.includes('по-точна оценка')) {
-    return [
-      { label: 'Да, желая', value: 'Да, желая да се свържа с консултант.' },
-      { label: 'Начало', value: 'ACTION_RELOAD' }
-    ];
-  }
+  // (2.5 moved above — see consultant check before furnishing)
 
-  // 2. Asking about property type (Moved down as it's more broad)
-  if (text.includes('какъв тип') || text.includes('вид имот') || text.includes('какъв имот') || text.includes('тип на имот') || text.includes('вид на имот') || text.includes('типът') || text.includes('типа') || text.includes('стаен') || text.includes('мезонет')) {
+  // 2. Asking about property type — check if this is a follow-up "друг" expansion
+  // If message mentions full list or follow-up types, show expanded list
+  if (text.includes('друг тип') || text.includes('други типове') || text.includes('изберете от следните') || text.includes('пълен списък')) {
     return withSkip([
-      { label: '1-стаен', value: '1-стаен' },
-      { label: '2-стаен', value: '2-стаен' },
-      { label: '3-стаен', value: '3-стаен' },
       { label: '4-стаен', value: '4-стаен' },
       { label: 'Многостаен', value: 'Многостаен' },
       { label: 'Мезонет', value: 'Мезонет' },
       { label: 'Ателие / таван', value: 'Ателие / таван' },
-      { label: 'Парцел', value: 'Парцел' },
       { label: 'Етаж от къща', value: 'Етаж от къща' },
       { label: 'Къща', value: 'Къща' },
       { label: 'Магазин', value: 'Магазин' },
@@ -126,37 +138,25 @@ function generateSuggestions(content: string): QuickReply[] {
       { label: 'Склад', value: 'Склад' },
       { label: 'Промишлен обект', value: 'Промишлен обект' },
       { label: 'Промишлен терен', value: 'Промишлен терен' },
-      { label: 'Хотел', value: 'Хотел' },
-      { label: 'Друг', value: 'Друг' }
+      { label: 'Хотел', value: 'Хотел' }
     ]);
   }
 
-  // 3. Asking about area / neighborhood
+  // 2. Asking about property type (top-level: 5 options)
+  if (text.includes('какъв тип') || text.includes('вид имот') || text.includes('какъв имот') || text.includes('тип на имот') || text.includes('вид на имот') || text.includes('типът') || text.includes('типа') || text.includes('стаен') || text.includes('мезонет')) {
+    return [
+      { label: '1-стаен', value: '1-стаен' },
+      { label: '2-стаен', value: '2-стаен' },
+      { label: '3-стаен', value: '3-стаен' },
+      { label: 'Парцел', value: 'Парцел' },
+      { label: 'Друг', value: 'Друг' }
+    ];
+  }
+
+  // 3. Asking about area / neighborhood — use city from the FULL conversation context
   if (text.includes('район') || text.includes('квартал') || text.includes('кой квартал') || text.includes('кой район') || text.includes('част на')) {
-    // If it's a specific city check, we add others
-    if (text.includes('софия')) {
-      return withSkip([
-        { label: 'Център', value: 'Център' },
-        { label: 'Лозенец', value: 'Лозенец' },
-        { label: 'Младост', value: 'Младост' },
-        { label: 'Люлин', value: 'Люлин' },
-        { label: 'Витоша', value: 'Витоша' },
-        { label: 'Друг', value: 'ACTION_FOCUS' }
-      ]);
-    }
-
-    if (text.includes('бургас')) {
-      return withSkip([
-        { label: 'Център', value: 'Център' },
-        { label: 'Лазур', value: 'Лазур' },
-        { label: 'Изгрев', value: 'Изгрев' },
-        { label: 'Славейков', value: 'Славейков' },
-        { label: 'Меден рудник', value: 'Меден рудник' },
-        { label: 'Друг', value: 'ACTION_FOCUS' }
-      ]);
-    }
-
-    if (text.includes('пловдив')) {
+    // Use fullContext to detect city from prior conversation messages
+    if (fullContext.includes('пловдив')) {
       return withSkip([
         { label: 'Център', value: 'Център' },
         { label: 'Тракия', value: 'Тракия' },
@@ -167,7 +167,18 @@ function generateSuggestions(content: string): QuickReply[] {
       ]);
     }
 
-    if (text.includes('варна')) {
+    if (fullContext.includes('бургас')) {
+      return withSkip([
+        { label: 'Център', value: 'Център' },
+        { label: 'Лазур', value: 'Лазур' },
+        { label: 'Изгрев', value: 'Изгрев' },
+        { label: 'Славейков', value: 'Славейков' },
+        { label: 'Меден рудник', value: 'Меден рудник' },
+        { label: 'Друг', value: 'ACTION_FOCUS' }
+      ]);
+    }
+
+    if (fullContext.includes('варна')) {
       return withSkip([
         { label: 'Център', value: 'Център' },
         { label: 'Левски', value: 'Левски' },
@@ -178,14 +189,20 @@ function generateSuggestions(content: string): QuickReply[] {
       ]);
     }
 
-    return withSkip([
-      { label: 'Център', value: 'Център' },
-      { label: 'Лозенец', value: 'Лозенец' },
-      { label: 'Младост', value: 'Младост' },
-      { label: 'Люлин', value: 'Люлин' },
-      { label: 'Витоша', value: 'Витоша' },
-      { label: 'Друг', value: 'ACTION_FOCUS' }
-    ]);
+    // Default: Sofia districts (or if city is explicitly Sofia or no specific city detected)
+    if (fullContext.includes('софия') || (!fullContext.includes('пловдив') && !fullContext.includes('бургас') && !fullContext.includes('варна'))) {
+      return withSkip([
+        { label: 'Център', value: 'Център' },
+        { label: 'Лозенец', value: 'Лозенец' },
+        { label: 'Младост', value: 'Младост' },
+        { label: 'Люлин', value: 'Люлин' },
+        { label: 'Витоша', value: 'Витоша' },
+        { label: 'Друг', value: 'ACTION_FOCUS' }
+      ]);
+    }
+
+    // Generic fallback — just free text
+    return [{ label: 'Друг', value: 'ACTION_FOCUS' }];
   }
 
   // 4. Asking about city / location
@@ -244,7 +261,7 @@ const INITIAL_MESSAGE: ChatMessage = {
   id: 'init-1',
   role: 'assistant',
   content:
-    'Здравейте! Аз съм Силви - вашият виртуален асистент.\n\nКак мога да помогна във връзка с ваш имот?',
+    'Здравейте! Аз съм Имотко - вашият виртуален асистент.\n\nКак мога да помогна във връзка с ваш имот?',
   timestamp: new Date(),
   suggestions: [
     { label: 'Продажба', value: 'Искам да продам имот.' },
@@ -296,13 +313,16 @@ export function useChatAgent() {
         // Split message by double newline into separate bubbles
         const botParts = response.message.split('\n\n').filter(p => p.trim() !== '');
         
+        // Build full conversation context for city detection in district suggestions
+        const fullConversationContext = messagesRef.current.map(m => m.content).join('\n') + '\n' + response.message;
+
         const assistantMessages: ChatMessage[] = botParts.map((part, idx) => ({
           id: nextId() + (idx > 0 ? `-${idx}` : ''),
           role: 'assistant',
           content: part.trim(),
           timestamp: new Date(),
           // Only the last bubble gets the suggestions
-          suggestions: idx === botParts.length - 1 ? generateSuggestions(response.message) : []
+          suggestions: idx === botParts.length - 1 ? generateSuggestions(response.message, fullConversationContext) : []
         }));
 
         const withAssistant = [...messagesRef.current, ...assistantMessages];

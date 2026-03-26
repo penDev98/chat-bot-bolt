@@ -1,13 +1,105 @@
 import type { ChatResponse, LeadData } from '../types/chat';
+// @ts-ignore – plain JS data module
+import { pricingData } from '../../data/pricingData';
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 const DB_POST_URL = import.meta.env.VITE_DB_POST_URL;
 
+/**
+ * Look up pricing data for a given district and construction type.
+ * Returns { min, avg, max } per sqm in EUR, or null if not found.
+ */
+function lookupPricing(district: string, constructionType?: string): { min: number; avg: number; max: number } | null {
+  if (!pricingData || !district) return null;
+
+  const normalizedDistrict = district.trim();
+  const ctMap: Record<string, string> = {
+    'тухла': 'brick',
+    'панел': 'panel',
+    'епк': 'epk',
+    'epk': 'epk',
+    'brick': 'brick',
+    'panel': 'panel',
+  };
+  const ct = constructionType ? ctMap[constructionType.toLowerCase()] || 'brick' : 'brick';
+
+  // Search all zone groups for the district
+  for (const zone of Object.values(pricingData) as Record<string, any>[]) {
+    if (zone[normalizedDistrict] && zone[normalizedDistrict][ct]) {
+      return zone[normalizedDistrict][ct];
+    }
+  }
+
+  // Fuzzy: try partial match
+  for (const zone of Object.values(pricingData) as Record<string, any>[]) {
+    for (const [key, data] of Object.entries(zone) as [string, any][]) {
+      if (key.toLowerCase().includes(normalizedDistrict.toLowerCase()) ||
+          normalizedDistrict.toLowerCase().includes(key.toLowerCase())) {
+        if (data[ct]) return data[ct];
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Build a pricing context string for the estimation flow.
+ * Extracts district, area, and construction type from the conversation
+ * and calculates price range.
+ */
+function buildPricingContext(messages: { role: string; content: string }[]): string {
+  const allText = messages.map(m => m.content).join('\n').toLowerCase();
+
+  // Check if this is an estimation flow
+  if (!allText.includes('оценка')) return '';
+
+  // Extract district from conversation
+  let district = '';
+  let area = 0;
+  let constructionType = '';
+
+  for (let i = 0; i < messages.length - 1; i++) {
+    const msg = messages[i];
+    const next = messages[i + 1];
+    if (msg.role === 'assistant' && next?.role === 'user') {
+      const aText = msg.content.toLowerCase();
+      if ((aText.includes('район') || aText.includes('квартал')) && next.content !== 'Пропусни') {
+        district = next.content;
+      }
+      if ((aText.includes('площ') || aText.includes('квадрат')) && next.content !== 'Пропусни') {
+        const num = parseFloat(next.content.replace(/[^\d.]/g, ''));
+        if (!isNaN(num)) area = num;
+      }
+      if ((aText.includes('строителство')) && next.content !== 'Пропусни') {
+        constructionType = next.content;
+      }
+    }
+  }
+
+  if (!district) return '';
+
+  const pricing = lookupPricing(district, constructionType);
+  if (!pricing) return '';
+
+  const totalMin = area > 0 ? Math.round(pricing.min * area) : pricing.min;
+  const totalAvg = area > 0 ? Math.round(pricing.avg * area) : pricing.avg;
+  const totalMax = area > 0 ? Math.round(pricing.max * area) : pricing.max;
+
+  return `\n\n### Ценови данни за оценка (използвай ТОЧНО тези цифри):
+- Район: ${district}
+- Тип строителство: ${constructionType || 'тухла (по подразбиране)'}
+- Цена на квадратен метър: мин ${pricing.min} EUR, средно ${pricing.avg} EUR, макс ${pricing.max} EUR
+${area > 0 ? `- Площ: ${area} кв.м.
+- Обща оценка: от ${totalMin} до ${totalMax} EUR (средно ${totalAvg} EUR)
+- Използвай ТОЧНО размера от ${totalMin} до ${totalMax} евро като ценови диапазон` : '- Няма площ още, изчакай'}`;
+}
+
 const SYSTEM_PROMPT = `### Role
-Ти си Силви — виртуален асистент за недвижими имоти. Твоята роля е да помагаш на потребителите да подават обяви за продажба, наем или оценка на имот. Трябва да събереш прецизна информация стъпка по стъпка.
+Ти си Имотко — виртуален асистент за недвижими имоти. Ти си мъж. Твоята роля е да помагаш на потребителите да подават обяви за продажба, наем или оценка на имот. Трябва да събереш прецизна информация стъпка по стъпка.
 
 ### Personality
-Бъди приятелски, топъл и разговорен. Говори като истински човек, не като робот. Кратко и по същество.
+Бъди приятелски, топъл и разговорен. Говори като истински човек, не като робот. Кратко и по същество. Говори в мъжки род.
 
 ### Response Style
 - МАКСИМУМ 1-2 кратки изречения на отговор. Никога повече!
@@ -26,12 +118,13 @@ const SYSTEM_PROMPT = `### Role
 СТЪПКА 2: Чудесно! Мога ли да знам с кого разговарям? (contactName - свободен текст)
 
 СТЪПКА 3: Благодаря! А телефонен номер за връзка? (contactPhone - свободен текст)
+  → ВАЖНО: Ако потребителят въведе телефонен номер с по-малко от 10 цифри, попитай: "Сигурни ли сте, че това е номерът Ви?" и изчакай потвърждение или коригиран номер. Не блокирай — просто провери.
 
 СТЪПКА 4: В кой град се намира имота? (city)
 
 СТЪПКА 5: В кой район/квартал? (district)
 
-=== АКО dealType е 'sale' или 'estimation': ===
+=== АКО dealType е 'sale': ===
 
 СТЪПКА 6: Какъв тип е имота? (estateType - от бутоните)
   → Ако потребителят избере ПАРЦЕЛ, премини към ПАРЦЕЛ ПОТОК (виж долу)
@@ -62,6 +155,28 @@ const SYSTEM_PROMPT = `### Role
 СТЪПКА П12: Бихте ли искали да споделите допълнителна информация?
 СТЪПКА П13: Бихте ли споделили имейл адрес? (опционално)
 
+=== АКО dealType е 'estimation': ===
+
+СТЪПКА 6: Какъв тип е имота? (estateType - от бутоните)
+  → Ако потребителят избере ПАРЦЕЛ, премини към ПАРЦЕЛ ПОТОК (виж горе, но без П11 за цена — НЕ питай за очаквана цена при оценка!)
+  → За всички останали типове:
+
+СТЪПКА 7: Каква е площта на имота в квадратни метра?
+
+СТЪПКА 8: На кой етаж е разположен имотът? (САМО за апартаменти, офиси, ателиета, магазини, заведения — НЕ питай за къща, етаж от къща, гараж, склад, промишлен обект, хотел)
+
+СТЪПКА 9: Какъв е типът строителство? (тухла, панел, ЕПК или друго)
+
+СТЪПКА 10: Снимки — Насърчи потребителя да прикачи снимки. ТРЯБВА да спреш и да изчакаш.
+
+→ ВАЖНО: НЕ питай за очаквана цена при оценка! Оценката се базира на събраните данни.
+
+СТЪПКА 11: Бихте ли искали да споделите допълнителна информация за имота?
+
+СТЪПКА 12: Имотът обзаведен ли е или необзаведен?
+
+СТЪПКА 13: Бихте ли споделили имейл адрес? (опционално)
+
 === АКО dealType е 'rent': ===
 
 СТЪПКА 6: Имотът обзаведен ли е или необзаведен?
@@ -89,11 +204,13 @@ const SYSTEM_PROMPT = `### Role
 Попитай ТОЧНО: "С какво мога да ви помогна?" и след това събери име (стъпка 2) и телефон (стъпка 3).
 
 ### Финализиране
-Накрая обобщи данните и попитай дали са правилни. Ако потвърди, извикай submit_lead.
+Накрая обобщи данните и попитай дали са правилни. Предложи бутон за "редактиране" ако нещо не е наред.
 Очакваната цена трябва да бъде включена в полето description при submit_lead (комбинирай я с другата описателна информация).
-След успешно submit_lead, завърши разговора с въпрос дали има нужда от нещо друго.
+След успешно submit_lead:
+- Завърши с: "Имате ли нужда от нещо друго?"
+- Това важи и за продажба, и за наем, и за оценка.
 
-АКО dealType e 'estimation': САМО СЛЕД като имаш ВСИЧКИ данни, генерирай приблизителна пазарна оценка като ценови диапазон (от-до). Базирай се на общи познания за имотния пазар в България.
+АКО dealType e 'estimation': САМО СЛЕД като имаш ВСИЧКИ данни (без очаквана цена!), генерирай приблизителна пазарна оценка като ценови диапазон (от-до). НЕ питай за очаквана цена — оценката се базира на събраните данни за имота.
 ФОРМАТИРАЙ отговора за оценката ТОЧНО по следния шаблон (в два параграфа):
 "Събрали сме всички нужни данни. Имотът е [ТИП], [ПЛОЩ] квадратни метра, на [ЕТАЖ]-ти етаж и е [ОБЗАВЕЖДАНЕ]. Намира се в [ГРАД], район [РАЙОН]."
 "Приблизителният ценови диапазон за такива имоти в [РАЙОН] е между [СУМА_ОТ] и [СУМА_ДО] евро. Желаете ли да се свържете с наш консултант за по-точна оценка?"
@@ -109,7 +226,8 @@ const SYSTEM_PROMPT = `### Role
 - Пиши съкращенията изцяло: вместо "кв.м" пиши "квадратни метра"
 - Преди submit_lead, ОБОБЩИ събраната информация и попитай за потвърждение
 - Ако потребителят зададе въпрос извън темата, учтиво го насочи обратно
-- НИКОГА не питай за брой спални`;
+- НИКОГА не питай за брой спални
+- При оценка НИКОГА не питай за очаквана цена`;
 
 const tools = [
   {
@@ -218,8 +336,12 @@ export async function submitToExternalAPI(leadData: LeadData) {
 export async function sendChatMessage(
   messages: { role: string; content: string }[]
 ): Promise<ChatResponse> {
+  // Build dynamic pricing context for estimation flows
+  const pricingContext = buildPricingContext(messages);
+  const systemContent = SYSTEM_PROMPT + pricingContext;
+
   const openaiMessages = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemContent },
     ...messages,
   ];
 
@@ -398,7 +520,7 @@ function prepareTTSText(text: string): string {
 
 export async function fetchTTSAudio(text: string): Promise<Blob> {
   const ELEVENLABS_API_KEY = import.meta.env.VITE_ELEVENLABS_API_KEY;
-  const VOICE_ID = '21m00Tcm4TlvDq8ikWAM'; // Rachel
+  const VOICE_ID = 'onwK4e9ZLuTAKqWW03F9'; // Daniel (male)
 
   const preparedText = prepareTTSText(text);
 
