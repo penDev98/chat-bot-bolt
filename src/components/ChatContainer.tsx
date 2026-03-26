@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { Volume2, X as XIcon } from 'lucide-react';
+import { Volume2 } from 'lucide-react';
 import { useChatAgent } from '../hooks/useChatAgent';
 import { useVoiceMode } from '../hooks/useVoiceMode';
 import ChatMessage from './ChatMessage';
@@ -14,7 +14,6 @@ export default function ChatContainer() {
     sendUserMessage,
     handlePhotoUpload,
     resetChat,
-    submitPartialAndReset,
   } = useChatAgent();
 
   const {
@@ -128,9 +127,7 @@ export default function ChatContainer() {
     [sendUserMessage]
   );
 
-  const handleClose = useCallback(() => {
-    submitPartialAndReset();
-  }, [submitPartialAndReset]);
+
 
   // Find the ID of the LAST assistant message in the list
   let lastAssistantMessageId: string | null = null;
@@ -184,14 +181,6 @@ export default function ChatContainer() {
                 </span>
               </div>
             )}
-            {/* Close button — always visible */}
-            <button
-              onClick={handleClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
-              title="Затвори чата"
-            >
-              <XIcon className="w-5 h-5" />
-            </button>
           </div>
         </div>
       </div>
