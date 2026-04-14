@@ -8,7 +8,7 @@ export interface ChatMessage {
 }
 
 export interface LeadData {
-  dealType: 'sale' | 'rent' | 'estimation' | 'consultation';
+  dealType: 'sale' | 'rent' | 'estimation';
   estateType?: 'studio' | 'two_room' | 'three_room' | 'four_room' | 'multi_room' | 'maisonette' | 'atelier' | 'house_floor' | 'house' | 'store' | 'office' | 'restaurant' | 'garage' | 'warehouse' | 'industrial' | 'industrial_land' | 'parcel' | 'hotel' | 'other';
   city: string;
   district?: string;

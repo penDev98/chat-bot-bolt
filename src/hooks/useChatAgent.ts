@@ -512,7 +512,7 @@ export function useChatAgent() {
 
     // Build partial lead data with defaults for missing fields
     const partialData: LeadData = {
-      dealType: 'consultation',
+      dealType: 'estimation',
       city: 'null',
       contactName: 'null',
       contactPhone: 'null',
@@ -561,6 +561,15 @@ export function useChatAgent() {
           }
         }
       }
+    }
+
+    // Only submit if we have at least a name and phone number
+    const hasName = partialData.contactName !== 'null' && partialData.contactName.trim() !== '';
+    const hasPhone = partialData.contactPhone !== 'null' && partialData.contactPhone.trim() !== '';
+
+    if (!hasName || !hasPhone) {
+      // Not enough data — just reset without sending to DB
+      return;
     }
 
     try {

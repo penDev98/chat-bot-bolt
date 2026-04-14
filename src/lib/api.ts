@@ -304,8 +304,8 @@ const SYSTEM_PROMPT = `### Role
 
 СТЪПКА 14: Имейл (опционално)
 
-=== АКО dealType е 'consultation': ===
-Попитай ТОЧНО: "С какво мога да ви помогна?" и след това събери име (стъпка 2) и телефон (стъпка 3).
+=== АКО потребителят избере 'Консултация': ===
+Използвай dealType='estimation'. Попитай ТОЧНО: "С какво мога да ви помогна?" и след това събери име (стъпка 2) и телефон (стъпка 3).
 
 ### Финализиране
 Накрая обобщи данните и попитай дали са правилни. Предложи бутон за "редактиране" ако нещо не е наред.
@@ -332,7 +332,7 @@ const SYSTEM_PROMPT = `### Role
 - Комуникирай САМО на български език
 - НИКОГА не задавай два въпроса в едно съобщение
 - НЕ извиквай submit_lead докато не си събрал контактната информация (име и телефон)
-- dealType ТРЯБВА да е: 'sale', 'rent', 'estimation' или 'consultation'
+- dealType ТРЯБВА да е: 'sale', 'rent' или 'estimation' (консултация също се записва като 'estimation')
 - Използвай "not disclosed" само ако потребителят откаже или пропусне информация
 - Когато поискаш снимки, кажи на потребителя да използва бутона за снимки долу вляво. НИКОГА не споменавай URL адреси.
 - Пиши съкращенията изцяло: вместо "кв.м" пиши "квадратни метра"
@@ -356,8 +356,8 @@ const tools = [
         properties: {
           dealType: {
             type: "string",
-            enum: ["sale", "rent", "estimation", "consultation"],
-            description: "Тип: 'sale' (продажба), 'rent' (наем), 'estimation' (оценка), 'consultation' (консултация)",
+            enum: ["sale", "rent", "estimation"],
+            description: "Тип: 'sale' (продажба), 'rent' (наем), 'estimation' (оценка или консултация)",
           },
           estateType: {
             type: "string",
@@ -415,7 +415,9 @@ export async function submitToExternalAPI(leadData: LeadData) {
   fd.append('lastName', lastName || "null");
   fd.append('phone', leadData.contactPhone || "null");
   fd.append('email', leadData.contactEmail && leadData.contactEmail !== 'not disclosed' ? leadData.contactEmail : "null");
-  fd.append('offerType', leadData.dealType || "null");
+  // Map 'consultation' → 'estimation' since the DB only supports sale/rent/estimation
+  const offerType = leadData.dealType === 'consultation' ? 'estimation' : (leadData.dealType || 'null');
+  fd.append('offerType', offerType);
   fd.append('city', leadData.city || "null");
   fd.append('district', leadData.district && leadData.district !== 'not disclosed' ? leadData.district : "null");
   fd.append('estateType', leadData.estateType || "null");
