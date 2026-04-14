@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { Volume2 } from 'lucide-react';
+import { Volume2, X } from 'lucide-react';
 import { useChatAgent } from '../hooks/useChatAgent';
 import { useVoiceMode } from '../hooks/useVoiceMode';
 import ChatMessage from './ChatMessage';
@@ -14,6 +14,8 @@ export default function ChatContainer() {
     sendUserMessage,
     handlePhotoUpload,
     resetChat,
+    submitPartialAndReset,
+    injectBotMessage,
   } = useChatAgent();
 
   const {
@@ -33,30 +35,87 @@ export default function ChatContainer() {
   const lastSpokenId = useRef('');
   const [showVoiceBanner, setShowVoiceBanner] = useState(false);
 
-  // Auto-scroll to bottom
-  useEffect(() => {
-    const scrollToBottom = () => {
-      if (scrollContainerRef.current) {
-        const container = scrollContainerRef.current;
-        container.scrollTo({
-          top: container.scrollHeight,
-          behavior: 'smooth'
-        });
-      }
-    };
+  // §3: Robust scroll-to-bottom function
+  const scrollToBottom = useCallback(() => {
+    if (scrollContainerRef.current) {
+      const container = scrollContainerRef.current;
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, []);
 
-    // First scroll after DOM paint
-    const t1 = setTimeout(scrollToBottom, 150);
-    // Second scroll to catch suggestion buttons that render after typing animation
-    const t2 = setTimeout(scrollToBottom, 600);
-    // Third scroll for longer messages with typewriter effect
-    const t3 = setTimeout(scrollToBottom, 1500);
+  // §3: Auto-scroll to bottom — multiple triggers for async rendering
+  useEffect(() => {
+    // Immediate scroll
+    scrollToBottom();
+    // After DOM paint
+    const t1 = setTimeout(scrollToBottom, 100);
+    // After suggestion buttons render
+    const t2 = setTimeout(scrollToBottom, 400);
+    // After typewriter typing effect
+    const t3 = setTimeout(scrollToBottom, 800);
+    // After longer messages complete typing
+    const t4 = setTimeout(scrollToBottom, 1500);
+    // Final catch-all for very long messages
+    const t5 = setTimeout(scrollToBottom, 2500);
 
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
+      clearTimeout(t4);
+      clearTimeout(t5);
     };
+  }, [messages, isLoading, scrollToBottom]);
+
+  // §3: Debounced MutationObserver — scroll on DOM changes without thrashing
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    let scrollRafId: number | null = null;
+    const debouncedScroll = () => {
+      if (scrollRafId) cancelAnimationFrame(scrollRafId);
+      scrollRafId = requestAnimationFrame(() => {
+        scrollToBottom();
+        scrollRafId = null;
+      });
+    };
+
+    const observer = new MutationObserver(debouncedScroll);
+
+    observer.observe(container, {
+      childList: true,
+      subtree: true,
+      // NOTE: characterData intentionally omitted — the typewriter effect sets
+      // textContent on every char which would cause scroll thrashing
+    });
+
+    return () => {
+      observer.disconnect();
+      if (scrollRafId) cancelAnimationFrame(scrollRafId);
+    };
+  }, [scrollToBottom]);
+
+  // §1: Keep input cursor active at all times
+  useEffect(() => {
+    const focusInput = () => {
+      const input = document.getElementById('chat-input-field') as HTMLInputElement | null;
+      if (input && document.activeElement !== input) {
+        // Don't steal focus from file input or buttons being clicked
+        const active = document.activeElement;
+        if (active?.tagName === 'BUTTON' || (active?.tagName === 'INPUT' && active !== input)) {
+          return;
+        }
+        input.focus();
+      }
+    };
+
+    // Focus after each message update
+    const timer = setTimeout(focusInput, 200);
+    return () => clearTimeout(timer);
   }, [messages, isLoading]);
 
   // Broadcast dimensions for iframe hosting
@@ -117,17 +176,48 @@ export default function ChatContainer() {
         return;
       }
 
+      // §5: Restart conversation action
+      if (text === 'ACTION_RESTART') {
+        resetChat();
+        return;
+      }
+
+      // §5: Close chat action — reset and minimize
+      if (text === 'ACTION_CLOSE') {
+        resetChat();
+        // Notify parent frame to minimize the chat (if embedded)
+        window.parent.postMessage({ type: 'CHAT_CLOSE' }, '*');
+        return;
+      }
+
+      // Legacy reload action
       if (text === 'ACTION_RELOAD') {
-        window.location.reload();
+        resetChat();
+        return;
+      }
+
+      // §5/§10: End conversation prompt — inject a LOCAL bot message
+      // (not sent as a user message — that would show the user saying bot text)
+      if (text === 'END_CONVERSATION_PROMPT') {
+        injectBotMessage('Мога ли да бъда полезен с нещо друго?', [
+          { label: 'Да', value: 'ACTION_RESTART' },
+          { label: 'Не, благодаря', value: 'ACTION_CLOSE' },
+        ]);
         return;
       }
 
       sendUserMessage(text);
     },
-    [sendUserMessage]
+    [sendUserMessage, resetChat, injectBotMessage]
   );
 
-
+  // §12: Close button handler — full reset and minimize
+  const handleCloseChat = useCallback(() => {
+    // submitPartialAndReset now resets first synchronously, then submits async
+    submitPartialAndReset();
+    // Notify parent frame to minimize
+    window.parent.postMessage({ type: 'CHAT_CLOSE' }, '*');
+  }, [submitPartialAndReset]);
 
   // Find the ID of the LAST assistant message in the list
   let lastAssistantMessageId: string | null = null;
@@ -144,6 +234,14 @@ export default function ChatContainer() {
 
   return (
     <div className="flex flex-col h-screen bg-slate-50">
+      {/* Hidden SVG filter for logo recoloring: black→#2A3075, white→white */}
+      <svg width="0" height="0" style={{ position: 'absolute' }}>
+        <defs>
+          <filter id="recolor-to-brand-blue" colorInterpolationFilters="sRGB">
+            <feColorMatrix type="matrix" values="0.8353 0 0 0 0.1647 0 0.8118 0 0 0.1882 0 0 0.5412 0 0.4588 0 0 0 1 0" />
+          </filter>
+        </defs>
+      </svg>
       {/* ─── Header ─── */}
       <div className="bg-white px-4 py-3 border-b border-slate-200 shadow-sm z-10">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
@@ -152,12 +250,13 @@ export default function ChatContainer() {
               <img
                 src="/logo.png"
                 alt="Столични имоти"
-                className="h-full w-auto object-contain"
+                className="h-full w-auto object-contain logo-brand-blue"
               />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                {/* §11: Logo status dot color matches chat avatar/brand color */}
+                <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                 <span className="text-xs text-slate-500 font-medium">
                   Имотко - вашият асистент
                 </span>
@@ -181,6 +280,15 @@ export default function ChatContainer() {
                 </span>
               </div>
             )}
+
+            {/* §12: Close (X) button */}
+            <button
+              onClick={handleCloseChat}
+              className="p-2 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
+              title="Затвори чат"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </div>
@@ -212,6 +320,7 @@ export default function ChatContainer() {
                 message.role === 'assistant' &&
                 message.id === lastAssistantMessageId
               }
+              onTypingComplete={scrollToBottom}
             />
           ))}
 

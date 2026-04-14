@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { CornerRightDown } from 'lucide-react';
 import type { ChatMessage as ChatMessageType } from '../types/chat';
 
@@ -7,6 +7,7 @@ interface ChatMessageProps {
   onSend: (text: string) => void;
   showSuggestions?: boolean;
   voiceActive?: boolean;
+  onTypingComplete?: () => void;
 }
 
 export default function ChatMessage({
@@ -14,12 +15,33 @@ export default function ChatMessage({
   onSend,
   showSuggestions = false,
   voiceActive = false,
+  onTypingComplete,
 }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const [displayedContent, setDisplayedContent] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [showSubTypes, setShowSubTypes] = useState(false);
   const animatedRef = useRef(false);
+  // Stable ref for onTypingComplete to avoid re-triggering the typewriter effect
+  const onTypingCompleteRef = useRef(onTypingComplete);
+  onTypingCompleteRef.current = onTypingComplete;
+
+  // Debounced scroll — prevents thrashing when typing fast
+  const lastScrollTime = useRef(0);
+  const scrollRafRef = useRef<number | null>(null);
+
+  const debouncedScroll = useCallback(() => {
+    const now = Date.now();
+    // Throttle: at most once every 150ms during typing
+    if (now - lastScrollTime.current < 150) return;
+    lastScrollTime.current = now;
+
+    if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+    scrollRafRef.current = requestAnimationFrame(() => {
+      onTypingCompleteRef.current?.();
+      scrollRafRef.current = null;
+    });
+  }, []);
 
   // Typewriter effect for assistant messages
   useEffect(() => {
@@ -49,22 +71,44 @@ export default function ChatMessage({
     const timer = setInterval(() => {
       index++;
       setDisplayedContent(content.slice(0, index));
+
+      // §3: Throttled scroll during typing (every 10 chars)
+      if (index % 10 === 0) {
+        debouncedScroll();
+      }
+
       if (index >= content.length) {
         clearInterval(timer);
         setIsTyping(false);
+        // §3: Final scroll when typing finishes — always fire
+        onTypingCompleteRef.current?.();
       }
     }, speed);
 
     return () => {
       clearInterval(timer);
+      if (scrollRafRef.current) {
+        cancelAnimationFrame(scrollRafRef.current);
+      }
     };
-  }, [message.content, isUser]);
+    // NOTE: onTypingComplete omitted from deps intentionally — using ref instead
+    // to avoid restarting the typewriter effect when the callback identity changes.
+    // voiceActive IS included because it affects typing speed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [message.content, isUser, voiceActive, debouncedScroll]);
 
-  // Auto-focus logic when the message finishes typing and has no suggestions
+  // §1: Auto-focus logic when the message finishes typing and has no suggestions
   useEffect(() => {
     if (!isUser && showSuggestions && !isTyping) {
+      // §3: Scroll to bottom when suggestions appear — cascade for reliability
+      onTypingCompleteRef.current?.();
+      // Scroll again after buttons render (staggered for different render timings)
+      setTimeout(() => onTypingCompleteRef.current?.(), 100);
+      setTimeout(() => onTypingCompleteRef.current?.(), 300);
+      setTimeout(() => onTypingCompleteRef.current?.(), 600);
+
       if (!message.suggestions || message.suggestions.length === 0) {
-        // Automatically focus the input field for free text entry
+        // §1: Automatically focus the input field for free text entry
         setTimeout(() => {
           document.getElementById('chat-input-field')?.focus();
         }, 50);
@@ -143,6 +187,8 @@ export default function ChatMessage({
                       if (s.value === 'Друг' && hasDrugTopLevel) {
                         // Expand the secondary list — do NOT send to agent yet
                         setShowSubTypes(true);
+                        // §3: Scroll after sub-types expand
+                        setTimeout(() => onTypingCompleteRef.current?.(), 100);
                       } else {
                         onSend(s.value);
                       }

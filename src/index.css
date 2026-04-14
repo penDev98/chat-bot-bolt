@@ -162,3 +162,10 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(148, 163, 184, 0.6);
 }
+
+/* ─── Logo brand colorization ─── */
+/* Uses an inline SVG feColorMatrix (defined in HTML) to precisely map
+   black → #2A3075 and white → white without any tinting artifacts. */
+.logo-brand-blue {
+  filter: url(#recolor-to-brand-blue);
+}

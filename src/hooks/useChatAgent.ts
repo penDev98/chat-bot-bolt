@@ -17,31 +17,12 @@ function generateSuggestions(content: string, conversationContext?: string): Qui
   // For city/district detection, use the full conversation context if available
   const fullContext = conversationContext ? conversationContext.toLowerCase() : text;
 
-  // ── Exclusions: questions that need free-text input → no buttons ──
-  const needsCustomInput = [
-    'как се казвате', 'вашето име', 'вашите имена', 'име и фамилия',
-    'с кого разговарям',
-    'телефон', 'номер за контакт', 'номер за връзка', 'обадим',
-    'каква цена', 'колко струва', 'за колко', 'очакваната',
-    'адрес', 'точен адрес', 'на кой адрес',
-    'площ', 'квадратур', 'колко квадрат',
-    'стаи', 'колко стаи', 'брой стаи',
-    'етаж', 'на кой етаж',
-    'кадастрал', 'идентификатор',
-    'допълнителна информация', 'допълнително'
-  ];
-
   // Name & phone questions — free text, NO skip button
   const isNameQuestion = text.includes('с кого разговарям') || text.includes('вашето име') || text.includes('как се казвате');
   const isPhoneQuestion = (text.includes('телефон') || text.includes('номер за контакт') || text.includes('номер за връзка')) && !text.includes('град');
 
   if (isNameQuestion || isPhoneQuestion) {
     return []; // Free text only, no skip
-  }
-
-  // For other free-text questions, provide a Skip button
-  if (needsCustomInput.some((phrase) => text.includes(phrase))) {
-    return [{ label: 'Пропусни', value: 'Пропусни' }];
   }
 
   // 0. Consultation explicit catch
@@ -57,6 +38,41 @@ function generateSuggestions(content: string, conversationContext?: string): Qui
     ];
   }
 
+  // --- §7: Unsupported property type in estimation → consultant message, end conversation
+  if (text.includes('спецификата на имота') && text.includes('консултант ще се свърже')) {
+    return [
+      { label: 'Мога ли да бъда полезен с нещо друго?', value: 'END_CONVERSATION_PROMPT' }
+    ];
+  }
+
+  // --- §6: Last floor question — MUST be checked BEFORE the generic "етаж" free-text check
+  if (text.includes('последен етаж')) {
+    return [
+      { label: 'Да', value: 'Да' },
+      { label: 'Не', value: 'Не' }
+    ];
+  }
+
+  // ── Exclusions: questions that need free-text input → no buttons ──
+  // NOTE: This block is intentionally AFTER the "последен етаж" check above,
+  // because "етаж" appears in both patterns and the more specific one must win.
+  const needsCustomInput = [
+    'как се казвате', 'вашето име', 'вашите имена', 'име и фамилия',
+    'с кого разговарям',
+    'телефон', 'номер за контакт', 'номер за връзка', 'обадим',
+    'каква цена', 'колко струва', 'за колко', 'очакваната',
+    'адрес', 'точен адрес', 'на кой адрес',
+    'стаи', 'колко стаи', 'брой стаи',
+    'етаж', 'на кой етаж',
+    'кадастрал', 'идентификатор',
+    'допълнителна информация', 'допълнително'
+  ];
+
+  // For other free-text questions, provide a Skip button
+  if (needsCustomInput.some((phrase) => text.includes(phrase))) {
+    return [{ label: 'Пропусни', value: 'Пропусни' }];
+  }
+
   // 1. Confirming details at the end
   if (text.includes('правилно') || text.includes('потвърд') || text.includes('коректни') || text.includes('всичко е наред') || text.includes('всичко наред ли') || text.includes('добавите/редактирате')) {
     return [
@@ -65,11 +81,19 @@ function generateSuggestions(content: string, conversationContext?: string): Qui
     ];
   }
 
-  // 1.5 Final follow-up (after completion)
+  // --- §5 & §10: End of conversation / "Мога ли да бъда полезен с нещо друго?"
+  if (text.includes('мога ли да бъда полезен с нещо друго') || text.includes('полезен с нещо друго')) {
+    return [
+      { label: 'Да', value: 'ACTION_RESTART' },
+      { label: 'Не, благодаря', value: 'ACTION_CLOSE' }
+    ];
+  }
+
+  // 1.5 Final follow-up (legacy catch)
   if (text.includes('още нещо') || text.includes('нужда от нещо друго') || text.includes('мога да съдействам с още нещо') || text.includes('мога ли да помогна с нещо друго')) {
     return [
-      { label: 'Да', value: 'ACTION_FOCUS' },
-      { label: 'Начало', value: 'ACTION_RELOAD' }
+      { label: 'Да', value: 'ACTION_RESTART' },
+      { label: 'Не, благодаря', value: 'ACTION_CLOSE' }
     ];
   }
 
@@ -83,22 +107,27 @@ function generateSuggestions(content: string, conversationContext?: string): Qui
     ]);
   }
 
-  // 2.1.5 Consultant Prompt — MUST be before furnishing check because the estimation
-  // summary message contains "обзаведен" (property description) AND the consultant question.
-  // If we check furnishing first, we get the wrong buttons.
-  if (text.includes('да се свържете с наш консултант') || text.includes('по-точна оценка')) {
+  // --- §10: Final CTA — expert consultation question
+  if (text.includes('желаете ли да заявите консултация с експерт-оценител') || text.includes('по-точна оценка')) {
     return [
-      { label: 'Да, желая', value: 'Да, желая да се свържа с консултант.' },
-      { label: 'Начало', value: 'ACTION_RELOAD' }
+      { label: 'Да', value: 'Да, желая да заявя консултация с експерт-оценител.' },
+      { label: 'Не', value: 'ACTION_RESTART' }
     ];
   }
 
-  // 2.2 Asking about furnishing
-  if (text.includes('обзаведен') || text.includes('обзавеждане')) {
-    return withSkip([
-      { label: 'Обзаведен', value: 'Обзаведен' },
-      { label: 'Необзаведен', value: 'Необзаведен' }
-    ]);
+  // Legacy consultant prompt catch
+  if (text.includes('да се свържете с наш консултант')) {
+    return [
+      { label: 'Да', value: 'Да, желая да заявя консултация с експерт-оценител.' },
+      { label: 'Не', value: 'ACTION_RESTART' }
+    ];
+  }
+
+  // --- §10: Expert will contact message → end flow
+  if (text.includes('експерт-оценител ще се свърже с вас')) {
+    return [
+      { label: 'Мога ли да бъда полезен с нещо друго?', value: 'END_CONVERSATION_PROMPT' }
+    ];
   }
 
   // 2.3 Regulation question (for parcels)
@@ -118,8 +147,6 @@ function generateSuggestions(content: string, conversationContext?: string): Qui
       { label: 'Друго', value: 'ACTION_FOCUS' }
     ]);
   }
-
-  // (2.5 moved above — see consultant check before furnishing)
 
   // 2. Asking about property type — check if this is a follow-up "друг" expansion
   // If message mentions full list or follow-up types, show expanded list
@@ -250,7 +277,7 @@ function generateSuggestions(content: string, conversationContext?: string): Qui
   // 8. End of conversation reload
   if (text.includes('приятен ден') || text.includes('радвам се, че успях') || text.includes('свържете се с нас')) {
     return [
-      { label: 'Начало', value: 'ACTION_RELOAD' }
+      { label: 'Начало', value: 'ACTION_RESTART' }
     ];
   }
 
@@ -278,11 +305,64 @@ export function useChatAgent() {
 
   const messagesRef = useRef<ChatMessage[]>([INITIAL_MESSAGE]);
   const idCounter = useRef(0);
+  // §4: Message queue system — ensures sequential rendering
+  const messageQueueRef = useRef<ChatMessage[][]>([]);
+  const isProcessingQueueRef = useRef(false);
+  // Abort token for cancelling queue processing on reset
+  const queueAbortRef = useRef(0);
 
   const nextId = () => {
     idCounter.current += 1;
     return `msg-${idCounter.current}`;
   };
+
+  // §4: Process the message queue — renders messages one at a time with delay
+  const processMessageQueue = useCallback(async () => {
+    if (isProcessingQueueRef.current) return;
+    isProcessingQueueRef.current = true;
+
+    const currentAbortToken = queueAbortRef.current;
+
+    while (messageQueueRef.current.length > 0) {
+      // Check abort before processing each batch
+      if (queueAbortRef.current !== currentAbortToken) break;
+
+      const nextBatch = messageQueueRef.current.shift()!;
+      
+      for (const msg of nextBatch) {
+        // Check abort before adding each message
+        if (queueAbortRef.current !== currentAbortToken) break;
+
+        const updated = [...messagesRef.current, msg];
+        messagesRef.current = updated;
+        setMessages([...updated]);
+        
+        // Wait for typewriter effect to complete before showing next message
+        // Only wait between multiple bot messages in the same batch
+        if (msg.role === 'assistant' && nextBatch.length > 1) {
+          const typingTime = Math.max(600, msg.content.length * 35 + 500);
+          await new Promise(resolve => setTimeout(resolve, typingTime));
+        }
+      }
+    }
+
+    isProcessingQueueRef.current = false;
+  }, []);
+
+  // Inject a local bot message without calling the API
+  const injectBotMessage = useCallback((content: string, suggestions: QuickReply[] = []) => {
+    const botMsg: ChatMessage = {
+      id: nextId(),
+      role: 'assistant',
+      content,
+      timestamp: new Date(),
+      suggestions,
+    };
+
+    const updated = [...messagesRef.current, botMsg];
+    messagesRef.current = updated;
+    setMessages([...updated]);
+  }, []);
 
   const sendUserMessage = useCallback(
     async (text: string, photoUrls?: string[]) => {
@@ -325,9 +405,21 @@ export function useChatAgent() {
           suggestions: idx === botParts.length - 1 ? generateSuggestions(response.message, fullConversationContext) : []
         }));
 
-        const withAssistant = [...messagesRef.current, ...assistantMessages];
-        messagesRef.current = withAssistant;
-        setMessages(withAssistant);
+        // §4: Queue messages for sequential rendering
+        setIsLoading(false);
+
+        if (assistantMessages.length <= 1) {
+          // Single message — add directly, no queue delay needed
+          for (const msg of assistantMessages) {
+            const updated = [...messagesRef.current, msg];
+            messagesRef.current = updated;
+            setMessages([...updated]);
+          }
+        } else {
+          // Multiple messages — use queue for sequential rendering
+          messageQueueRef.current.push(assistantMessages);
+          processMessageQueue();
+        }
 
         if (response.leadSubmitted) {
           setLeadSubmitted(true);
@@ -345,12 +437,11 @@ export function useChatAgent() {
         const withError = [...messagesRef.current, errorMsg];
         messagesRef.current = withError;
         setMessages(withError);
-        return null;
-      } finally {
         setIsLoading(false);
+        return null;
       }
     },
-    []
+    [processMessageQueue]
   );
 
   const handlePhotoUpload = useCallback(
@@ -379,10 +470,19 @@ export function useChatAgent() {
     [sendUserMessage]
   );
 
+  // §12 & §14: Full reset — clears all state, messages, queue, inputs
   const resetChat = useCallback(() => {
+    // Abort any in-progress queue processing
+    queueAbortRef.current += 1;
+
+    // Clear message queue
+    messageQueueRef.current = [];
+    isProcessingQueueRef.current = false;
+
     messagesRef.current = [INITIAL_MESSAGE];
     setMessages([INITIAL_MESSAGE]);
     setLeadSubmitted(false);
+    setIsLoading(false);
     idCounter.current = 0;
     
     // Revoke and clear local photo URLs
@@ -398,6 +498,9 @@ export function useChatAgent() {
   const submitPartialAndReset = useCallback(async () => {
     const currentMessages = messagesRef.current;
     
+    // Reset immediately — don't wait for async submission
+    resetChat();
+
     // Try to extract gathered data from conversation messages
     const allText = currentMessages.map(m => m.content).join('\n');
     
@@ -465,8 +568,6 @@ export function useChatAgent() {
     } catch (error) {
       console.error('Partial submit on close failed:', error);
     }
-
-    resetChat();
   }, [resetChat]);
 
   return {
@@ -477,5 +578,6 @@ export function useChatAgent() {
     handlePhotoUpload,
     resetChat,
     submitPartialAndReset,
+    injectBotMessage,
   };
 }
