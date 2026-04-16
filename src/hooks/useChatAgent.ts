@@ -110,23 +110,23 @@ function generateSuggestions(content: string, conversationContext?: string): Qui
   // --- §10: Final CTA — expert consultation question
   if (text.includes('желаете ли да заявите консултация с експерт-оценител') || text.includes('по-точна оценка')) {
     return [
-      { label: 'Да', value: 'Да, желая да заявя консултация с експерт-оценител.' },
-      { label: 'Не', value: 'ACTION_RESTART' }
+      { label: 'Да', value: 'ACTION_EXPERT_YES' },
+      { label: 'Не, край на разговора', value: 'ACTION_RESTART' }
     ];
   }
 
   // Legacy consultant prompt catch
   if (text.includes('да се свържете с наш консултант')) {
     return [
-      { label: 'Да', value: 'Да, желая да заявя консултация с експерт-оценител.' },
-      { label: 'Не', value: 'ACTION_RESTART' }
+      { label: 'Да', value: 'ACTION_EXPERT_YES' },
+      { label: 'Не, край на разговора', value: 'ACTION_RESTART' }
     ];
   }
 
-  // --- §10: Expert will contact message → end flow
+  // --- §10: Expert will contact message → end flow (restart/close)
   if (text.includes('експерт-оценител ще се свърже с вас')) {
     return [
-      { label: 'Мога ли да бъда полезен с нещо друго?', value: 'END_CONVERSATION_PROMPT' }
+      { label: 'Начало', value: 'ACTION_RESTART' }
     ];
   }
 

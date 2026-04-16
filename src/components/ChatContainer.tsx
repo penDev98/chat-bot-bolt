@@ -196,6 +196,14 @@ export default function ChatContainer() {
         return;
       }
 
+      // §10: Expert consultation accepted — deterministic response
+      if (text === 'ACTION_EXPERT_YES') {
+        injectBotMessage('Наш експерт-оценител ще се свърже с вас за да уточните подробностите.', [
+          { label: 'Начало', value: 'ACTION_RESTART' }
+        ]);
+        return;
+      }
+
       // §5/§10: End conversation prompt — inject a LOCAL bot message
       // (not sent as a user message — that would show the user saying bot text)
       if (text === 'END_CONVERSATION_PROMPT') {
