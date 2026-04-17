@@ -305,14 +305,23 @@ const SYSTEM_PROMPT = `### Role
 СТЪПКА 14: Имейл (опционално)
 
 === АКО потребителят избере 'Консултация': ===
-Използвай dealType='estimation'. Попитай ТОЧНО: "С какво мога да ви помогна?" и след това събери име (стъпка 2) и телефон (стъпка 3).
+Използвай dealType='consultation'. Потокът е кратък и различен от другите:
+СТЪПКА К1: Попитай ТОЧНО: "С какво мога да ви помогна?" (message — свободен текст, запиши отговора)
+СТЪПКА К2: Мога ли да знам с кого разговарям? (contactName)
+СТЪПКА К3: Телефонен номер за връзка? (contactPhone)
+→ ВАЖНО: Ако номерът е с по-малко от 10 цифри, попитай: "Сигурни ли сте, че това е номерът Ви?"
+СТЪПКА К4: Бихте ли споделили имейл адрес? (contactEmail — опционално)
+СТЪПКА К5: Обобщи данните (име, телефон, имейл ако има, и какво искат) и попитай за потвърждение.
+След потвърждение → извикай submit_lead с dealType='consultation', description = съобщението на потребителя от К1.
+След успешно submit_lead → попитай "Мога ли да бъда полезен с нещо друго?"
+НЕ питай за град, район, тип имот, площ или снимки при консултация!
 
 ### Финализиране
 Накрая обобщи данните и попитай дали са правилни. Предложи бутон за "редактиране" ако нещо не е наред.
 Очакваната цена трябва да бъде включена в полето description при submit_lead (комбинирай я с другата описателна информация).
 След успешно submit_lead:
 - Попитай ТОЧНО: "Мога ли да бъда полезен с нещо друго?"
-- Това важи и за продажба, и за наем, и за оценка.
+- Това важи и за продажба, и за наем, и за оценка, и за консултация.
 
 АКО dealType e 'estimation': САМО СЛЕД като имаш ВСИЧКИ данни (без очаквана цена!), генерирай приблизителна пазарна оценка като ценови диапазон (от-до). НЕ питай за очаквана цена — оценката се базира на събраните данни за имота.
 ФОРМАТИРАЙ отговора за оценката ТОЧНО по следния шаблон (в два параграфа):
@@ -332,7 +341,7 @@ const SYSTEM_PROMPT = `### Role
 - Комуникирай САМО на български език
 - НИКОГА не задавай два въпроса в едно съобщение
 - НЕ извиквай submit_lead докато не си събрал контактната информация (име и телефон)
-- dealType ТРЯБВА да е: 'sale', 'rent' или 'estimation' (консултация също се записва като 'estimation')
+- dealType ТРЯБВА да е: 'sale', 'rent', 'estimation' или 'consultation'
 - Използвай "not disclosed" само ако потребителят откаже или пропусне информация
 - Когато поискаш снимки, кажи на потребителя да използва бутона за снимки долу вляво. НИКОГА не споменавай URL адреси.
 - Пиши съкращенията изцяло: вместо "кв.м" пиши "квадратни метра"
@@ -356,8 +365,8 @@ const tools = [
         properties: {
           dealType: {
             type: "string",
-            enum: ["sale", "rent", "estimation"],
-            description: "Тип: 'sale' (продажба), 'rent' (наем), 'estimation' (оценка или консултация)",
+            enum: ["sale", "rent", "estimation", "consultation"],
+            description: "Тип: 'sale' (продажба), 'rent' (наем), 'estimation' (оценка), 'consultation' (консултация)",
           },
           estateType: {
             type: "string",
@@ -415,9 +424,7 @@ export async function submitToExternalAPI(leadData: LeadData) {
   fd.append('lastName', lastName || "null");
   fd.append('phone', leadData.contactPhone || "null");
   fd.append('email', leadData.contactEmail && leadData.contactEmail !== 'not disclosed' ? leadData.contactEmail : "null");
-  // Map 'consultation' → 'estimation' since the DB only supports sale/rent/estimation
-  const offerType = leadData.dealType === 'consultation' ? 'estimation' : (leadData.dealType || 'null');
-  fd.append('offerType', offerType);
+  fd.append('offerType', leadData.dealType || 'null');
   fd.append('city', leadData.city || "null");
   fd.append('district', leadData.district && leadData.district !== 'not disclosed' ? leadData.district : "null");
   fd.append('estateType', leadData.estateType || "null");
@@ -445,6 +452,31 @@ export async function submitToExternalAPI(leadData: LeadData) {
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`External API error: ${response.status} - ${errorText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Submit consultation data to the 100imoti contact form API.
+ * Uses a simple JSON POST with name, phone, email, message, and honeypot field.
+ */
+export async function submitConsultationAPI(leadData: LeadData) {
+  const response = await fetch('https://100imoti.com/api/contact-form', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: leadData.contactName || '',
+      phone: leadData.contactPhone || '',
+      email: leadData.contactEmail && leadData.contactEmail !== 'not disclosed' ? leadData.contactEmail : '',
+      message: leadData.description || 'Искам консултация',
+      company: '' // honeypot — always empty
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Consultation API error: ${response.status} - ${errorText}`);
   }
 
   return await response.json();
@@ -493,10 +525,15 @@ export async function sendChatMessage(
       let dbSuccess = false;
 
       try {
-        await submitToExternalAPI(leadData);
+        // Route consultation submissions to the dedicated contact-form API
+        if (leadData.dealType === 'consultation') {
+          await submitConsultationAPI(leadData);
+        } else {
+          await submitToExternalAPI(leadData);
+        }
         dbSuccess = true;
       } catch (error) {
-        console.error("External API submission failed:", error);
+        console.error("API submission failed:", error);
       }
 
       // Ensure a deterministic end flow without unnecessary OpenAI latency

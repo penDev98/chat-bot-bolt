@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import type { ChatMessage, QuickReply } from '../types/chat';
-import { sendChatMessage, submitToExternalAPI } from '../lib/api';
+import { sendChatMessage, submitToExternalAPI, submitConsultationAPI } from '../lib/api';
 import type { LeadData } from '../types/chat';
 
 // Helper: add a ПРОПУСНИ (Skip) button to suggestion arrays
@@ -525,7 +525,8 @@ export function useChatAgent() {
 
     // Try to detect dealType from conversation
     const lowerText = allText.toLowerCase();
-    if (lowerText.includes('продам') || lowerText.includes('продажба')) partialData.dealType = 'sale';
+    if (lowerText.includes('консултация')) partialData.dealType = 'consultation';
+    else if (lowerText.includes('продам') || lowerText.includes('продажба')) partialData.dealType = 'sale';
     else if (lowerText.includes('наем') || lowerText.includes('отдам')) partialData.dealType = 'rent';
     else if (lowerText.includes('оценка')) partialData.dealType = 'estimation';
 
@@ -573,7 +574,12 @@ export function useChatAgent() {
     }
 
     try {
-      await submitToExternalAPI(partialData);
+      // Route consultation submissions to the dedicated contact-form API
+      if (partialData.dealType === 'consultation') {
+        await submitConsultationAPI(partialData);
+      } else {
+        await submitToExternalAPI(partialData);
+      }
     } catch (error) {
       console.error('Partial submit on close failed:', error);
     }
