@@ -268,11 +268,9 @@ function confirmSuggestions(): QuickReply[] {
 }
 
 function emailSuggestions(): QuickReply[] {
-  return [
-    { label: 'Въведи имейл', value: 'ACTION_FOCUS' },
-    { label: 'Нямам имейл', value: 'Нямам имейл или не желая да предоставя.' },
-  ];
+  return [{ label: 'Пропусни', value: 'Пропусни' }];
 }
+
 
 function yesNoSuggestions(): QuickReply[] {
   return [
