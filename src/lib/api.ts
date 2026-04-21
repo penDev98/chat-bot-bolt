@@ -145,20 +145,26 @@ export async function submitToExternalAPI(leadData: LeadData) {
 }
 
 /**
- * Submit consultation data to the 100imoti contact form API.
- * Uses a simple JSON POST with name, phone, email, message, and honeypot field.
+ * Submit consultation data to the 100imoti contact form.
+ * Uses the Next.js Server Action endpoint at /kontakti with multipart/form-data.
+ * Field names are prefixed with "1_" to match the server action's expected format.
  */
 export async function submitConsultationAPI(leadData: LeadData) {
-  const response = await fetch('https://100imoti.com/api/contact-form', {
+  const CONSULTATION_URL = 'https://100imoti-fe.vercel.app/kontakti';
+  const NEXT_ACTION_ID = '40663129f5fa38f320935d3d31ac47f544b413a9b4';
+
+  const fd = new FormData();
+  fd.append('1_company', '');  // honeypot — always empty
+  fd.append('1_username', leadData.contactName || '');
+  fd.append('1_mobile', leadData.contactPhone || '');
+  fd.append('1_email', leadData.contactEmail && leadData.contactEmail !== 'not disclosed' ? leadData.contactEmail : '');
+  fd.append('1_message', leadData.description || 'Искам консултация');
+  fd.append('0', JSON.stringify(['$K1']));
+
+  const response = await fetch(CONSULTATION_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name: leadData.contactName || '',
-      phone: leadData.contactPhone || '',
-      email: leadData.contactEmail && leadData.contactEmail !== 'not disclosed' ? leadData.contactEmail : '',
-      message: leadData.description || 'Искам консултация',
-      company: '' // honeypot — always empty
-    })
+    headers: { 'Next-Action': NEXT_ACTION_ID },
+    body: fd,
   });
 
   if (!response.ok) {
@@ -166,7 +172,7 @@ export async function submitConsultationAPI(leadData: LeadData) {
     throw new Error(`Consultation API error: ${response.status} - ${errorText}`);
   }
 
-  return await response.json();
+  return await response.text();
 }
 
 
