@@ -231,13 +231,15 @@ export function useChatAgent() {
     // Build lead data from engine state (much more reliable than text-scanning)
     const leadData = buildLeadData(currentEngineState);
 
-    // Only submit if we have at least a name and phone number
-    const hasName = leadData.contactName !== 'not disclosed' && leadData.contactName.trim() !== '';
+    // Gate: consultations require at least a phone number;
+    // all other flows require both name and phone.
     const hasPhone = leadData.contactPhone !== 'not disclosed' && leadData.contactPhone.trim() !== '';
+    const hasName = leadData.contactName !== 'not disclosed' && leadData.contactName.trim() !== '';
 
-    if (!hasName || !hasPhone) {
-      // Not enough data — just reset without sending to DB
-      return;
+    if (leadData.dealType === 'consultation') {
+      if (!hasPhone) return;           // no phone → don't send
+    } else {
+      if (!hasName || !hasPhone) return; // need both for property leads
     }
 
     try {
