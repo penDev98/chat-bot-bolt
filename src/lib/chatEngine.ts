@@ -588,10 +588,14 @@ export function processMessage(
     }
 
     case 'consult_phone': {
-      s.contactPhone = userInput;
-      if (countDigits(userInput) > 0 && countDigits(userInput) < 10) {
+      const digitsOnly = userInput.replace(/[^\d]/g, '');
+      if (digitsOnly.length === 0) {
+        return mk(s, ['Моля, въведете валиден телефонен номер (само цифри).'], []);
+      }
+      s.contactPhone = digitsOnly;
+      if (digitsOnly.length > 0 && digitsOnly.length < 10) {
         s.step = 'consult_validate_phone';
-        return mk(s, ['Сигурни ли сте, че това е номерът Ви?'], phoneValidationSuggestions());
+        return mk(s, [`Въведеният номер е ${digitsOnly}. Сигурни ли сте, че е правилен?`], phoneValidationSuggestions());
       }
       s.step = 'consult_email';
       return mk(s, ['Записано! Бихте ли споделили имейл адрес?'], emailSuggestions());
@@ -599,9 +603,13 @@ export function processMessage(
 
     case 'consult_validate_phone': {
       if (!userInput.includes('правилен') && !userInput.toLowerCase().includes('да')) {
-        s.contactPhone = userInput;
-        if (countDigits(userInput) > 0 && countDigits(userInput) < 10) {
-          return mk(s, ['Сигурни ли сте, че това е номерът Ви?'], phoneValidationSuggestions());
+        const digitsOnly = userInput.replace(/[^\d]/g, '');
+        if (digitsOnly.length === 0) {
+          return mk(s, ['Моля, въведете валиден телефонен номер (само цифри).'], []);
+        }
+        s.contactPhone = digitsOnly;
+        if (digitsOnly.length > 0 && digitsOnly.length < 10) {
+          return mk(s, [`Въведеният номер е ${digitsOnly}. Сигурни ли сте, че е правилен?`], phoneValidationSuggestions());
         }
       }
       s.step = 'consult_email';
@@ -609,7 +617,12 @@ export function processMessage(
     }
 
     case 'consult_email': {
-      if (!isSkip && !userInput.toLowerCase().includes('нямам')) s.contactEmail = userInput;
+      if (!isSkip && !userInput.toLowerCase().includes('нямам')) {
+        if (!userInput.includes('@')) {
+          return mk(s, ['Моля, въведете валиден имейл адрес (трябва да съдържа "@").'], emailSuggestions());
+        }
+        s.contactEmail = userInput;
+      }
       s.step = 'consult_confirm';
       return mk(s, [buildConsultSummary(s)], confirmSuggestions());
     }
@@ -635,10 +648,14 @@ export function processMessage(
     }
 
     case 'ask_phone': {
-      s.contactPhone = userInput;
-      if (countDigits(userInput) > 0 && countDigits(userInput) < 10) {
+      const digitsOnly = userInput.replace(/[^\d]/g, '');
+      if (digitsOnly.length === 0) {
+        return mk(s, ['Моля, въведете валиден телефонен номер (само цифри).'], []);
+      }
+      s.contactPhone = digitsOnly;
+      if (digitsOnly.length > 0 && digitsOnly.length < 10) {
         s.step = 'validate_phone';
-        return mk(s, ['Сигурни ли сте, че това е номерът Ви?'], phoneValidationSuggestions());
+        return mk(s, [`Въведеният номер е ${digitsOnly}. Сигурни ли сте, че е правилен?`], phoneValidationSuggestions());
       }
       s.step = 'ask_city';
       return mk(s, ['Записано! В кой град се намира имотът?'], citySuggestions());
@@ -646,9 +663,13 @@ export function processMessage(
 
     case 'validate_phone': {
       if (!userInput.includes('правилен') && !userInput.toLowerCase().includes('да')) {
-        s.contactPhone = userInput;
-        if (countDigits(userInput) > 0 && countDigits(userInput) < 10) {
-          return mk(s, ['Сигурни ли сте, че това е номерът Ви?'], phoneValidationSuggestions());
+        const digitsOnly = userInput.replace(/[^\d]/g, '');
+        if (digitsOnly.length === 0) {
+          return mk(s, ['Моля, въведете валиден телефонен номер (само цифри).'], []);
+        }
+        s.contactPhone = digitsOnly;
+        if (digitsOnly.length > 0 && digitsOnly.length < 10) {
+          return mk(s, [`Въведеният номер е ${digitsOnly}. Сигурни ли сте, че е правилен?`], phoneValidationSuggestions());
         }
       }
       s.step = 'ask_city';
@@ -769,7 +790,12 @@ export function processMessage(
 
     // ═══════ EMAIL ═══════════════════════════════════════
     case 'ask_email': {
-      if (!isSkip && !userInput.toLowerCase().includes('нямам')) s.contactEmail = userInput;
+      if (!isSkip && !userInput.toLowerCase().includes('нямам')) {
+        if (!userInput.includes('@')) {
+          return mk(s, ['Моля, въведете валиден имейл адрес (трябва да съдържа "@").'], emailSuggestions());
+        }
+        s.contactEmail = userInput;
+      }
 
       if (s.dealType === 'estimation') {
         const estimate = generateEstimateMessages(s);
@@ -804,7 +830,7 @@ export function processMessage(
         ], anythingElseSuggestions());
       }
       s.step = 'anything_else';
-      return mk(s, ['Мога ли да бъда полезен с нещо друго?'], anythingElseSuggestions());
+      return mk(s, [], anythingElseSuggestions());
     }
 
     // ═══════ CONFIRMATION (sale / rent) ══════════════════

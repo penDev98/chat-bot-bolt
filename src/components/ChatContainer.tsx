@@ -347,37 +347,7 @@ export default function ChatContainer() {
             </div>
           )}
 
-          {leadSubmitted && (
-            <div className="mx-6 my-4 p-6 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 text-center shadow-sm message-enter">
-              <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-emerald-100 flex items-center justify-center">
-                <svg
-                  className="w-6 h-6 text-emerald-600"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-emerald-900 mb-1">
-                Заявката е приета!
-              </h3>
-              <p className="text-sm text-emerald-700 mb-4">
-                Благодарим ви! Наш консултант ще се свърже с вас скоро.
-              </p>
-              <button
-                onClick={resetChat}
-                className="px-6 py-2 bg-emerald-600 text-white rounded-full text-sm font-medium hover:bg-emerald-700 transition-colors shadow-sm"
-              >
-                Започни нов разговор
-              </button>
-            </div>
-          )}
+
 
           <div ref={messagesEndRef} className="h-8" />
         </div>
@@ -396,7 +366,7 @@ export default function ChatContainer() {
             onVoiceToggle={handleVoiceToggle}
             voiceActive={voiceActive}
             voiceListening={isListening}
-            disabled={isLoading || (leadSubmitted && !voiceActive) || forceSelection}
+            disabled={isLoading || forceSelection}
             forceSelection={forceSelection}
           />
         </div>
