@@ -90,6 +90,40 @@ const SUPPORTED_EST_TYPES = new Set([
 ]);
 
 // ════════════════════════════════════════════
+//  Contact persistence (localStorage)
+// ════════════════════════════════════════════
+
+const CONTACT_STORAGE_KEY = 'imotko_contact';
+
+interface SavedContact {
+  name: string;
+  phone: string;
+  email?: string;
+}
+
+export function getSavedContact(): SavedContact | null {
+  try {
+    const raw = localStorage.getItem(CONTACT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.name && parsed.phone) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveContact(name: string, phone: string, email?: string): void {
+  try {
+    const data: SavedContact = { name, phone };
+    if (email) data.email = email;
+    localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify(data));
+  } catch {
+    // localStorage unavailable — silently ignore
+  }
+}
+
+// ════════════════════════════════════════════
 //  Small helpers
 // ════════════════════════════════════════════
 
@@ -566,10 +600,30 @@ export function processMessage(
     case 'greeting': {
       s.dealType = parseDealType(userInput);
       if (s.dealType === 'consultation') {
+        // Check for saved contact — skip name/phone if we already have them
+        const saved = getSavedContact();
+        if (saved) {
+          s.contactName = saved.name;
+          s.contactPhone = saved.phone;
+          if (saved.email) s.contactEmail = saved.email;
+          s.step = 'consult_message';
+          return mk(s, [`Здравейте отново, ${saved.name}! С какво мога да ви помогна?`], []);
+        }
         s.step = 'consult_message';
         return mk(s, ['С какво мога да ви помогна?'], []);
       }
       const labels: Record<string, string> = { sale: 'продажба', rent: 'наем', estimation: 'оценка' };
+      // Check for saved contact — skip name/phone if we already have them
+      const saved = getSavedContact();
+      if (saved) {
+        s.contactName = saved.name;
+        s.contactPhone = saved.phone;
+        if (saved.email) s.contactEmail = saved.email;
+        s.step = 'ask_city';
+        return mk(s, [
+          `Здравейте отново, ${saved.name}! Ще ви помогна с ${labels[s.dealType!] || 'вашия имот'}. В кой град се намира имотът?`
+        ], citySuggestions());
+      }
       s.step = 'ask_name';
       return mk(s, [`Чудесно! Ще ви помогна с ${labels[s.dealType!] || 'вашия имот'}. Мога ли да знам с кого разговарям?`], []);
     }
@@ -583,6 +637,14 @@ export function processMessage(
 
     case 'consult_name': {
       s.contactName = userInput;
+      // Check if we already have a saved phone from a previous session
+      const savedForPhone = getSavedContact();
+      if (savedForPhone && savedForPhone.phone) {
+        s.contactPhone = savedForPhone.phone;
+        if (savedForPhone.email) s.contactEmail = savedForPhone.email;
+        s.step = 'consult_email';
+        return mk(s, [`Благодаря, ${userInput}! Бихте ли споделили имейл адрес?`], emailSuggestions());
+      }
       s.step = 'consult_phone';
       return mk(s, [`Благодаря, ${userInput}! А телефонен номер за връзка?`], []);
     }
@@ -597,6 +659,8 @@ export function processMessage(
         s.step = 'consult_validate_phone';
         return mk(s, [`Въведеният номер е ${digitsOnly}. Сигурни ли сте, че е правилен?`], phoneValidationSuggestions());
       }
+      // Persist contact info for future sessions
+      saveContact(s.contactName, s.contactPhone);
       s.step = 'consult_email';
       return mk(s, ['Записано! Бихте ли споделили имейл адрес?'], emailSuggestions());
     }
@@ -612,6 +676,8 @@ export function processMessage(
           return mk(s, [`Въведеният номер е ${digitsOnly}. Сигурни ли сте, че е правилен?`], phoneValidationSuggestions());
         }
       }
+      // Persist contact info for future sessions
+      saveContact(s.contactName, s.contactPhone);
       s.step = 'consult_email';
       return mk(s, ['Записано! Бихте ли споделили имейл адрес?'], emailSuggestions());
     }
@@ -623,6 +689,8 @@ export function processMessage(
         }
         s.contactEmail = userInput;
       }
+      // Persist contact info for future sessions
+      saveContact(s.contactName, s.contactPhone, s.contactEmail || undefined);
       s.step = 'consult_confirm';
       return mk(s, [buildConsultSummary(s)], confirmSuggestions());
     }
@@ -643,6 +711,16 @@ export function processMessage(
     // ═══════ COMMON: NAME / PHONE / CITY / DISTRICT ═════
     case 'ask_name': {
       s.contactName = userInput;
+      // Check if we already have a saved phone from a previous session
+      const savedPhone = getSavedContact();
+      if (savedPhone && savedPhone.phone) {
+        s.contactPhone = savedPhone.phone;
+        if (savedPhone.email) s.contactEmail = savedPhone.email;
+        // Persist updated name + existing phone
+        saveContact(s.contactName, s.contactPhone, s.contactEmail || undefined);
+        s.step = 'ask_city';
+        return mk(s, [`Благодаря, ${userInput}! В кой град се намира имотът?`], citySuggestions());
+      }
       s.step = 'ask_phone';
       return mk(s, [`Благодаря, ${userInput}! А телефонен номер за връзка?`], []);
     }
@@ -657,6 +735,8 @@ export function processMessage(
         s.step = 'validate_phone';
         return mk(s, [`Въведеният номер е ${digitsOnly}. Сигурни ли сте, че е правилен?`], phoneValidationSuggestions());
       }
+      // Persist contact info for future sessions
+      saveContact(s.contactName, s.contactPhone);
       s.step = 'ask_city';
       return mk(s, ['Записано! В кой град се намира имотът?'], citySuggestions());
     }
@@ -672,6 +752,8 @@ export function processMessage(
           return mk(s, [`Въведеният номер е ${digitsOnly}. Сигурни ли сте, че е правилен?`], phoneValidationSuggestions());
         }
       }
+      // Persist contact info for future sessions
+      saveContact(s.contactName, s.contactPhone);
       s.step = 'ask_city';
       return mk(s, ['Записано! В кой град се намира имотът?'], citySuggestions());
     }
@@ -796,6 +878,8 @@ export function processMessage(
         }
         s.contactEmail = userInput;
       }
+      // Persist contact info (update with email if provided)
+      saveContact(s.contactName, s.contactPhone, s.contactEmail || undefined);
 
       if (s.dealType === 'estimation') {
         const estimate = generateEstimateMessages(s);
