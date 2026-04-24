@@ -631,6 +631,11 @@ export function processMessage(
     // ═══════ CONSULTATION FLOW ══════════════════════════
     case 'consult_message': {
       s.consultationMessage = userInput;
+      // If contact info was already loaded from localStorage, skip name/phone/email
+      if (s.contactName && s.contactPhone) {
+        s.step = 'consult_confirm';
+        return mk(s, [buildConsultSummary(s)], confirmSuggestions());
+      }
       s.step = 'consult_name';
       return mk(s, ['Благодаря! Мога ли да знам с кого разговарям?'], []);
     }
